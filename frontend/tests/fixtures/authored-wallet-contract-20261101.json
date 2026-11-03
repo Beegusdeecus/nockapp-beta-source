@@ -1,0 +1,111 @@
+{
+  "scope": {
+    "chain_id": 84532,
+    "application": "0x5656565656565656565656565656565656565656565656565656565656565656",
+    "contract": "0x1212121212121212121212121212121212121212"
+  },
+  "post": {
+    "kind": "thread",
+    "id": "11111111-1111-4111-8111-111111111111",
+    "created_at": 1793494800,
+    "thread_id": null,
+    "title": "Synthetic wallet check",
+    "body": "Only this post: caf\u00e9 \ud83d\ude00\u007f",
+    "references": [],
+    "claims": []
+  },
+  "selection": {
+    "address": true,
+    "followers_threshold": 10000
+  },
+  "submission_id": "abababababababababababababababababababababababababababababababab",
+  "request": {
+    "profile": "nockapp-protected-authorship-desktop-v4",
+    "state": "awaiting-wallet-signature",
+    "address": "0x3434343434343434343434343434343434343434",
+    "typed_data": {
+      "types": {
+        "EIP712Domain": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "name": "verifyingContract",
+            "type": "address"
+          }
+        ],
+        "NockAppPostAuthorization": [
+          {
+            "name": "purpose",
+            "type": "string"
+          },
+          {
+            "name": "application",
+            "type": "bytes32"
+          },
+          {
+            "name": "postAuthorHash",
+            "type": "bytes32"
+          },
+          {
+            "name": "intentHash",
+            "type": "bytes32"
+          },
+          {
+            "name": "authorshipProofHash",
+            "type": "bytes32"
+          },
+          {
+            "name": "credentialEvidenceHash",
+            "type": "bytes32"
+          },
+          {
+            "name": "nonce",
+            "type": "bytes32"
+          },
+          {
+            "name": "issuedAt",
+            "type": "uint256"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          }
+        ]
+      },
+      "primaryType": "NockAppPostAuthorization",
+      "domain": {
+        "name": "NockApp Private Authorship",
+        "version": "4",
+        "chainId": 84532,
+        "verifyingContract": "0x1212121212121212121212121212121212121212"
+      },
+      "message": {
+        "purpose": "Authorize this exact NockApp post and its selected public proofs",
+        "application": "0x5656565656565656565656565656565656565656565656565656565656565656",
+        "postAuthorHash": "0x1bccaf5041bf0c368945f5f27d803fa9b6a6f12ef21339acdeccc0aad9f0a199",
+        "intentHash": "0xd09b2de9643e200c16ceb3b564cfa2fd90dbc694a40d96845388bea9b5d05b95",
+        "authorshipProofHash": "0x158ba34a9670e7672522886de7470258e257be3f8963c6581f314e51635645ea",
+        "credentialEvidenceHash": "0x74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "nonce": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "issuedAt": 1793494800,
+        "deadline": 1793494860
+      }
+    },
+    "request_sha256": "ee790e9e43e5ef493b0378f956ba0b96220174e859f89bd8c1147456bc80f544",
+    "expired": false,
+    "authorization_expires_at": 1793494850
+  },
+  "canonical_intent": "{\"context\":{\"application\":\"0x5656565656565656565656565656565656565656565656565656565656565656\",\"chain_id\":84532,\"contract\":\"0x1212121212121212121212121212121212121212\",\"protocol\":4,\"submission_id\":\"abababababababababababababababababababababababababababababababab\"},\"disclosures\":{\"address\":true,\"followers_threshold\":10000},\"post\":{\"body\":\"Only this post: caf\\u00e9 \\ud83d\\ude00\\u007f\",\"claims\":[],\"created_at\":1793494800,\"id\":\"11111111-1111-4111-8111-111111111111\",\"kind\":\"thread\",\"references\":[],\"thread_id\":null,\"title\":\"Synthetic wallet check\"},\"profile\":\"nockapp-authored-post-intent-v4\"}",
+  "synthetic_public_proof": true,
+  "network_used": false
+}

@@ -1,0 +1,119 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { publicProjection, validPublicBody, validPublicRow, validPublicSubmission, attachPublicDiscussion, PUBLIC_VERSION, PUBLIC_PORT } from '../src/publicDiscussion';
+const fixture = JSON.parse(readFileSync(new URL('./fixtures/public-native-contract-v6-20261101.json', import.meta.url), 'utf8'));
+const vector = (op: string) => fixture.vectors.find((v: any) => v.operation === op);
+
+test('actual native-v6 public contract admits real projections and consented exact bodies', () => {
+  expect(fixture.profile).toBe('nockapp-public-browser-contract-v6-synthetic');
+  for (const v of fixture.vectors) {
+    expect(validPublicBody(v.operation, v.body), `${v.operation} body`).toBe(true);
+    expect(publicProjection(v.operation, v.result, v.body), `${v.operation} result`).toBe(true);
+  }
+});
+test('valid authored text survives two selected but missing badges and retains canonical unavailable numbers', () => {
+  const page = vector('public-numbers');const row = page.result.posts[0];
+  expect(validPublicRow(row)).toBe(true);expect(row.display).toEqual({ address: null, followers: null, history: null });
+  expect(vector('public-prepare').body.selection).toEqual({ address: true, followers_threshold: 10000 });
+  for (const state of ['invalid', 'content-unavailable', 'verification-unavailable']) {
+    const invalid = Object.fromEntries(Object.entries(row).filter(([k]) => ['post_number', 'bundle_hash', 'indexed_at', 'block_number', 'block_hash', 'transaction_hash', 'canonical_indexed'].includes(k)));
+    expect(validPublicRow({ ...invalid, state, proofs_verified: false })).toBe(true);
+    expect(validPublicRow({ ...invalid, state, proofs_verified: true })).toBe(false);
+    expect(validPublicRow({ ...invalid, state, proofs_verified: false, display: row.display })).toBe(false);
+  }
+  expect(validPublicRow(page.result.posts[1])).toBe(true);
+});
+test('v6 public rows reject private fields, hidden dates, forged verdicts and permanent IDs', () => {
+  const row = vector('public-numbers').result.posts[0];
+  for (const change of [{ secret: 'PRIVATE' }, { public_id: 'stable-id' }, { authorship_checked: false }, { proofs_verified: false },
+    { verifier_profile: 'nockapp-public-verifier-v5' }, { display: { ...row.display, followers: { threshold: 10, issued_at: 1, expires_at: 2 } } },
+    { post: { ...row.post, holder_secret: 'PRIVATE' } }]) expect(validPublicRow({ ...row, ...change })).toBe(false);
+  const followers = { threshold: 10000, qualified_when_indexed: true, indexed_at: row.indexed_at, credential_profile: 'nockapp-renewal-count-v3' };
+  expect(validPublicRow({ ...row, display: { ...row.display, followers }, historical_follower_evidence: followers })).toBe(true);
+  const address = '0x' + '12'.repeat(20);
+  expect(validPublicRow({ ...row, display: { ...row.display, address } })).toBe(true);
+  expect(validPublicRow({ ...row, display: { ...row.display, address, followers }, historical_follower_evidence: followers })).toBe(true);
+});
+test('private paths, endpoints, credential state and unconsented actions cannot reach native helpers', () => {
+  for (const [operation, body] of [
+    ['public-ticket-prepare', { approve_purchase: false }], ['public-ticket-recover', { recovery: 'PRIVATE' }],
+    ['public-identity-options', { directory: '/tmp/forbidden' }], ['public-adopt-identity', { source_id: '12'.repeat(32), approve_key_reuse: false }],
+    ['public-ticket-payment', { ...vector('public-ticket-payment').body, approved: true }], ['public-numbers', { numbers: [1, 1] }],
+    ['public-numbers', { numbers: [0] }], ['public-numbers', { numbers: [true] }],
+    ['public-prepare', { ...vector('public-prepare').body, post: { ...vector('public-prepare').body.post, credential: {} } }],
+    ['public-attach-history', { post_id: vector('public-prepare').body.post.id, records: [], approve_linking: true }],
+    ['sign-arbitrary-transaction', {}], ['authored-bundle-publish', {}],
+  ] as [string, Record<string, unknown>][]) expect(validPublicBody(operation, body), operation).toBe(false);
+});
+test('purchase calldata binds the exact prepared pack and payments cannot credit themselves', () => {
+  const q = vector('public-ticket-prepare');expect(publicProjection(q.operation, q.result, q.body)).toBe(true);
+  for (const change of [{ to: '0x' + '12'.repeat(20), arbitrary: true }, { data: q.result.transaction.data + '00' }, { data: '0x12345678' + q.result.pack_hash.slice(2) },
+    { chain_id: 1 }, { value: '0x0' }]) expect(publicProjection(q.operation, { ...q.result, transaction: { ...q.result.transaction, ...change } }, q.body)).toBe(false);
+  const payment = vector('public-ticket-payment');expect(publicProjection(payment.operation, payment.result, { ...payment.body, pack_hash: '0x' + '12'.repeat(32) })).toBe(false);
+  const recovery = vector('public-ticket-recover');expect(publicProjection(recovery.operation, { ...recovery.result, token: {} }, recovery.body)).toBe(false);
+});
+test('canonical read ordering, exact outbox intent and protocol versions cannot be silently changed', () => {
+  const v = vector('public-numbers');
+  for (const change of [{ posts: [...v.result.posts].reverse() }, { posts: [v.result.posts[0]] }, { requested_numbers: ['2', '999'] },
+    { whole_log_complete: true }, { profile: 'nockapp-public-page-v5' }, { credential: {} }, { next_number: '1000' },
+    { finalized_block: { ...v.result.finalized_block, number: '0x0' } }]) expect(publicProjection(v.operation, { ...v.result, ...change }, v.body)).toBe(false);
+  const p = vector('public-prepare');expect(publicProjection(p.operation, p.result, { ...p.body, post: { ...p.body.post, body: 'Changed after consent' } })).toBe(false);
+  expect(validPublicSubmission({ ...p.result, phase: 'submitted' })).toBe(false);
+  const saved = vector('public-outbox');expect(publicProjection(saved.operation, { ...saved.result, entries: saved.result.entries.map((v: any) => ({ ...v, verification_current: true })) }, saved.body)).toBe(false);
+  const check = vector('public-check');expect(publicProjection(check.operation, { ...check.result, verification_current: false }, check.body)).toBe(false);
+});
+
+function harness() {
+  const uiListeners = new Set<(v: unknown) => void>();const nativeListeners = new Set<(v: unknown) => void>();const disconnected = new Set<() => void>();
+  const sent: any[] = [];const replies: any[] = [];let dials = 0;let closed = 0;
+  const noop = () => {};
+  Object.defineProperty(globalThis, 'chrome', { configurable: true, value: { runtime: {
+    connectNative: () => { dials++;return { postMessage: (v: any) => sent.push(v), disconnect: () => { closed++; },
+      onMessage: { addListener: (fn: (v: unknown) => void) => nativeListeners.add(fn), removeListener: (fn: (v: unknown) => void) => nativeListeners.delete(fn) },
+      onDisconnect: { addListener: noop, removeListener: noop } }; },
+  } } });
+  const ui = { onMessage: { addListener: (fn: (v: unknown) => void) => uiListeners.add(fn) },
+    onDisconnect: { addListener: (fn: () => void) => disconnected.add(fn) }, postMessage: (v: any) => replies.push(v) } as unknown as chrome.runtime.Port;
+  attachPublicDiscussion(ui);
+  return { sent, replies, dials: () => dials, closed: () => closed,
+    send: (operation: string, body: Record<string, unknown>) => uiListeners.forEach(fn => fn({ version: PUBLIC_VERSION, operation, body })),
+    reply: (result: unknown, changes = {}) => nativeListeners.forEach(fn => fn({ profile: 'nockapp-zkid-public-post-native-v1', id: sent.at(-1).id,
+      status: 'ok', laboratory: true, verified: false, result, ...changes })),
+    close: () => { disconnected.forEach(fn => fn());Reflect.deleteProperty(globalThis, 'chrome'); } };
+}
+test('bridge sends only public namespace, correlates replies and releases its slot after failure', () => {
+  const h = harness();
+  try {
+    h.send('public-ticket-prepare', { approve_purchase: false });expect(h.dials()).toBe(0);
+    h.send('public-capabilities', {});expect(h.sent[0].operation).toBe('public-capabilities');
+    h.reply(vector('public-capabilities').result, { id: '00'.repeat(16) });expect(h.replies.at(-1).error).toBe('unsupported-helper');
+    h.send('public-capabilities', {});h.reply(vector('public-capabilities').result);
+    expect(h.replies.at(-1).result.verifier_release).toBe(6);expect(h.closed()).toBe(2);
+    h.send('public-ticket-status', {});h.reply({ ...vector('public-ticket-status').result, secret: 'PRIVATE' });
+    expect(h.replies.at(-1).error).toBe('unsupported-helper');expect(JSON.stringify(h.replies)).not.toContain('PRIVATE');
+  } finally { h.close(); }
+});
+test('disconnect releases global public operation ownership and drops late replies', () => {
+  const h = harness();h.send('public-capabilities', {});h.close();const count = h.replies.length;
+  h.reply(vector('public-capabilities').result);expect(h.replies).toHaveLength(count);
+  const next = harness();try { next.send('public-capabilities', {});expect(next.sent).toHaveLength(1);next.reply(vector('public-capabilities').result); } finally { next.close(); }
+});
+// Built background is also checked in background.spec.ts; constant is pinned here.
+test('public port is a distinct protocol, with no reinterpretation of v4 traffic', () => {
+  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-6');
+});
+
+test('actual cursor-page vectors preserve empty ranges and cannot skip or invent allocations', () => {
+  const current = JSON.parse(readFileSync(new URL('./fixtures/public-page-contract-v6-20261101-v2.json', import.meta.url), 'utf8'));
+  const pages = current.vectors.filter((v: any) => v.operation === 'public-page');expect(pages).toHaveLength(2);
+  for (const v of pages) {
+    expect(validPublicBody(v.operation, v.body)).toBe(true);expect(publicProjection(v.operation, v.result, v.body)).toBe(true);
+    for (const change of [{ next_after: 99 }, { after: 2 }, { more: !v.result.more }, { posts: [...v.result.posts, ...v.result.posts] }]) {
+      if (v.result.posts.length === 0 && 'posts' in change) continue;
+      expect(publicProjection(v.operation, { ...v.result, ...change }, v.body)).toBe(false);
+    }
+  }
+  expect(validPublicBody('public-page', { after: true, limit: 4 })).toBe(false);
+  expect(validPublicBody('public-page', { after: -1, limit: 4 })).toBe(false);
+  expect(validPublicBody('public-page', { after: 0, limit: 8 })).toBe(false);
+});

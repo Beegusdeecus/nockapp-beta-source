@@ -1,0 +1,5 @@
+.ticket-wallet { height: 100dvh; max-height: 100dvh; overflow-y: auto; overflow-wrap: anywhere; margin: 0 auto; padding: 20px; box-sizing: border-box; }
+.ticket-wallet section { margin-block: 20px; }
+.ticket-wallet label { display: block; margin-block: 12px; }
+.ticket-wallet input:not([type="checkbox"]) { display: block; width: 100%; box-sizing: border-box; }
+.ticket-wallet button { margin: 6px 6px 6px 0; }

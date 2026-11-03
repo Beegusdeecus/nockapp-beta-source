@@ -1,0 +1,9 @@
+.public-post fieldset { min-width: 0; margin: 1.25rem 0; padding: 1rem; border: 1px solid var(--border, #344049); border-radius: 10px; }
+.public-post legend { padding: 0 .35rem; font-weight: 600; }
+.public-post label:not(.disclosure) { display: grid; gap: .4rem; margin-bottom: .85rem; }
+.public-post input:not([type=checkbox]), .public-post textarea { box-sizing: border-box; width: 100%; padding: .7rem; background: #fff; color: #17202c; border: 1px solid #8090a0; border-radius: 6px; font: inherit; }
+.public-post textarea { min-height: 8rem; resize: vertical; overflow-wrap: anywhere; }
+.public-post .manual-post { display: inline-block; margin: .75rem; }
+.public-post .recovery-actions { margin: 1rem 0; }
+.public-post { color-scheme: light; }
+.public-post a:not(.brand) { color: #194da5; }

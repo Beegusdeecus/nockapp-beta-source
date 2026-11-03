@@ -1,0 +1,1 @@
+{"compiler":"solc-0.8.30","compiler_sha256":"f3e987dc6ecebd4bd350c48edcbc320b46cf9e3109bd3fc3d88f1acaf4c428f7","no_imports_or_libraries":true,"settings":{"evmVersion":"prague","optimizer":{"enabled":true,"runs":200},"outputSelection":{"*":{"*":["abi","storageLayout","evm.bytecode.object","evm.deployedBytecode.object","evm.deployedBytecode.immutableReferences"]}}}}

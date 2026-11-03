@@ -1,0 +1,57 @@
+{
+  "source_sha256": "17c4aecf5d4de99d3abbd25f3962851a7099a9fabf6a00dbfffb72758213031b",
+  "vectors": [
+    {
+      "post": {
+        "kind": "thread",
+        "id": "12345678-1234-4123-8123-123456789abc",
+        "created_at": 1793011200000,
+        "thread_id": null,
+        "title": "Synthetic Caf\u00e9 \ud83d\ude00",
+        "body": "Caf\u00e9 \ud83d\ude00\n\u0085kept by JS trim\u0085",
+        "references": [
+          [
+            "https://x.com/i/status/3141592653589793",
+            "3141592653589793"
+          ]
+        ],
+        "claims": [
+          [
+            "followers-10k",
+            null
+          ]
+        ]
+      },
+      "payload": "[\"NOCKAPP/ZKID/POST-SCOPE/v1\",\"thread\",\"12345678-1234-4123-8123-123456789abc\",1793011200000,null,\"Synthetic Caf\u00e9 \ud83d\ude00\",\"Caf\u00e9 \ud83d\ude00\\n\u0085kept by JS trim\u0085\",[[\"https://x.com/i/status/3141592653589793\",\"3141592653589793\"]],[[\"followers-10k\",null]]]",
+      "sha256": "a7fe08b89645d33981361ad103b5bab466dfbee571b17b1d33f530b51558233e",
+      "audience": "abababababababababababababababababababababababababababababababab",
+      "scope": "cf970d31597231a8113a6cc496577860977d7777d372196857c2dc4bb7389a47"
+    },
+    {
+      "post": {
+        "kind": "comment",
+        "id": "12345678-1234-4123-8123-123456789abc",
+        "created_at": 1793011200000,
+        "thread_id": "legacy-thread-a",
+        "title": null,
+        "body": "Caf\u00e9 \ud83d\ude00\n\u0085kept by JS trim\u0085",
+        "references": [
+          [
+            "https://x.com/i/status/3141592653589793",
+            "3141592653589793"
+          ]
+        ],
+        "claims": [
+          [
+            "followers-10k",
+            null
+          ]
+        ]
+      },
+      "payload": "[\"NOCKAPP/ZKID/POST-SCOPE/v1\",\"comment\",\"12345678-1234-4123-8123-123456789abc\",1793011200000,\"legacy-thread-a\",null,\"Caf\u00e9 \ud83d\ude00\\n\u0085kept by JS trim\u0085\",[[\"https://x.com/i/status/3141592653589793\",\"3141592653589793\"]],[[\"followers-10k\",null]]]",
+      "sha256": "b60a9e12ad73d43f33cbded9c5a2c78c7476a9beccc16b67a98abce9aa70bd8b",
+      "audience": "abababababababababababababababababababababababababababababababab",
+      "scope": "5930910f6c849cba52e48d9c7a8690b7d4e5af71e28a6f18ee3091103a0f0ae7"
+    }
+  ]
+}

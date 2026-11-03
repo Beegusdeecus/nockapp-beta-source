@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-firefox/
+test-results/
+playwright-report/
+.env
+.env.*

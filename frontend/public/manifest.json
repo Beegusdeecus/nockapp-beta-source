@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "NockApp \u2014 anonymous discussion",
+  "version": "0.4.0",
+  "description": "Local discussions with private X proofs and holder-bound passport facts. Research test candidate; real-account acceptance pending.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "contextMenus",
+    "storage",
+    "nativeMessaging",
+    "webRequest"
+  ],
+  "optional_host_permissions": [
+    "https://x.com/*",
+    "https://api.x.com/*",
+    "https://abs.twimg.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Discuss on NockApp",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'none'; img-src 'self' data:; style-src 'self'; base-uri 'none'; form-action 'none'"
+  }
+}

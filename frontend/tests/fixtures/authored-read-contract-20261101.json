@@ -1,0 +1,826 @@
+{
+  "capabilities": {
+    "configured": true,
+    "count_enrollment_configured": true,
+    "experimental": true,
+    "identity": {
+      "application": "0xabababababababababababababababababababababababababababababababab",
+      "author_native_sha256": "dc66398792965a5a7d458b548a3751f7f574bd4559da45529d2d66ac93dd44dd",
+      "bundle_profile": "nockapp-public-discussion-bundle-v4",
+      "chain_id": 84532,
+      "contract": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "count_native_sha256": "0d0ef1072d39bdcbb589b9dd2eef03554dfcf71571e99a41f916742a33a6461f",
+      "definition_hash": "30e4d5c3150aa78af9e8e9dae385a347914a27b40a91bd9a5510dceb80fb66b6",
+      "native_sha256": "7caf9649a8dd665ddeed096407d20e5406cf5b9a56d75fa3d6fa08b84abc5d09",
+      "profile": "nockapp-bundle-service-identity-v4",
+      "protocol": 4,
+      "registry": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "storage": {
+        "max_bundle_bytes": 32768,
+        "permanent_availability_proven": false,
+        "replicas": [
+          {
+            "failure_domain": "aws-region:ap-southeast-2",
+            "name": "replica-one"
+          },
+          {
+            "failure_domain": "aws-region:eu-west-1",
+            "name": "replica-two"
+          }
+        ],
+        "retention_seconds": 7776000
+      }
+    }
+  },
+  "content_unavailable_page": {
+    "after": 0,
+    "canonical_total_count": "2",
+    "checkpoint": {
+      "hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+      "number": "0x19"
+    },
+    "content_complete": false,
+    "experimental": true,
+    "global_listing_complete": false,
+    "identity": {
+      "application": "0xabababababababababababababababababababababababababababababababab",
+      "author_native_sha256": "dc66398792965a5a7d458b548a3751f7f574bd4559da45529d2d66ac93dd44dd",
+      "bundle_profile": "nockapp-public-discussion-bundle-v4",
+      "chain_id": 84532,
+      "contract": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "count_native_sha256": "0d0ef1072d39bdcbb589b9dd2eef03554dfcf71571e99a41f916742a33a6461f",
+      "definition_hash": "30e4d5c3150aa78af9e8e9dae385a347914a27b40a91bd9a5510dceb80fb66b6",
+      "native_sha256": "7caf9649a8dd665ddeed096407d20e5406cf5b9a56d75fa3d6fa08b84abc5d09",
+      "profile": "nockapp-bundle-service-identity-v4",
+      "protocol": 4,
+      "registry": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "storage": {
+        "max_bundle_bytes": 32768,
+        "permanent_availability_proven": false,
+        "replicas": [
+          {
+            "failure_domain": "aws-region:ap-southeast-2",
+            "name": "replica-one"
+          },
+          {
+            "failure_domain": "aws-region:eu-west-1",
+            "name": "replica-two"
+          }
+        ],
+        "retention_seconds": 7776000
+      }
+    },
+    "index_gaps": [],
+    "last_canonical_number": "2",
+    "listing_complete": true,
+    "more": false,
+    "next_after": 2,
+    "page_complete": true,
+    "page_content_complete": false,
+    "page_evidence_complete": false,
+    "posts": [
+      {
+        "accepted_at": 1793012408,
+        "address_evidence_checked": false,
+        "authorship_checked": false,
+        "block_hash": "0x79355514235bdc0f7a6622ee6f8fd7f8298f866572b0e6a2af7081ef30bfe2a0",
+        "block_number": 24,
+        "bundle_hash": "0x228c03d193aa5f1235155bfc7b557ad5860ec02b62af9cc44cc342b11da30c55",
+        "canonical_accepted": true,
+        "content_integrity_checked": false,
+        "credential_evidence_checked": false,
+        "credential_expiry": 0,
+        "credential_kind": 0,
+        "credential_status": "unavailable",
+        "observed_at": 0,
+        "ordinal": 1,
+        "post": null,
+        "post_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "post_number": "1",
+        "public_address": null,
+        "registry_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "registry_sequence": 0,
+        "state": "content-unavailable",
+        "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc",
+        "thread_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b",
+        "valid_when_published": null
+      },
+      {
+        "accepted_at": 1793012413,
+        "address_evidence_checked": false,
+        "authorship_checked": false,
+        "block_hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+        "block_number": 25,
+        "bundle_hash": "0xcd41b7d284f767c6267498f471a061e7b14a55fb1e5d4dcf305d2db97349b8ae",
+        "canonical_accepted": true,
+        "content_integrity_checked": false,
+        "credential_evidence_checked": false,
+        "credential_expiry": 1793098800,
+        "credential_kind": 2,
+        "credential_status": "unavailable",
+        "observed_at": 1793012400,
+        "ordinal": 2,
+        "post": null,
+        "post_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "post_number": "2",
+        "public_address": null,
+        "registry_hash": "0x8ee856f7eed06e307e13cb44b6514b6e3b8e0ba729332ec7f743f98d72516369",
+        "registry_sequence": 1793011202,
+        "state": "content-unavailable",
+        "submission_id": "15804769d0b2c08468adf1f01b39914f3f134e9927020453f9aaab132ae02532",
+        "thread_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "transaction_hash": "0x3fd166101b6e34f2e4795c4f230a151c75614f0d8e0575b379bebaf32b568b94",
+        "valid_when_published": null
+      }
+    ],
+    "scope": "thread-catalog",
+    "thread_accepted": null,
+    "thread_id": null
+  },
+  "evidence_unavailable_page": {
+    "after": 0,
+    "canonical_total_count": "2",
+    "checkpoint": {
+      "hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+      "number": "0x19"
+    },
+    "content_complete": true,
+    "experimental": true,
+    "global_listing_complete": false,
+    "identity": {
+      "application": "0xabababababababababababababababababababababababababababababababab",
+      "author_native_sha256": "dc66398792965a5a7d458b548a3751f7f574bd4559da45529d2d66ac93dd44dd",
+      "bundle_profile": "nockapp-public-discussion-bundle-v4",
+      "chain_id": 84532,
+      "contract": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "count_native_sha256": "0d0ef1072d39bdcbb589b9dd2eef03554dfcf71571e99a41f916742a33a6461f",
+      "definition_hash": "30e4d5c3150aa78af9e8e9dae385a347914a27b40a91bd9a5510dceb80fb66b6",
+      "native_sha256": "7caf9649a8dd665ddeed096407d20e5406cf5b9a56d75fa3d6fa08b84abc5d09",
+      "profile": "nockapp-bundle-service-identity-v4",
+      "protocol": 4,
+      "registry": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "storage": {
+        "max_bundle_bytes": 32768,
+        "permanent_availability_proven": false,
+        "replicas": [
+          {
+            "failure_domain": "aws-region:ap-southeast-2",
+            "name": "replica-one"
+          },
+          {
+            "failure_domain": "aws-region:eu-west-1",
+            "name": "replica-two"
+          }
+        ],
+        "retention_seconds": 7776000
+      }
+    },
+    "index_gaps": [],
+    "last_canonical_number": "2",
+    "listing_complete": true,
+    "more": false,
+    "next_after": 2,
+    "page_complete": true,
+    "page_content_complete": true,
+    "page_evidence_complete": false,
+    "posts": [
+      {
+        "accepted_at": 1793012408,
+        "address_evidence_checked": false,
+        "authorship_checked": false,
+        "block_hash": "0x79355514235bdc0f7a6622ee6f8fd7f8298f866572b0e6a2af7081ef30bfe2a0",
+        "block_number": 24,
+        "bundle_hash": "0x228c03d193aa5f1235155bfc7b557ad5860ec02b62af9cc44cc342b11da30c55",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "credential_evidence_checked": false,
+        "credential_expiry": 0,
+        "credential_kind": 0,
+        "credential_status": "unavailable",
+        "observed_at": 0,
+        "ordinal": 1,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "4592df3d-2710-48c0-b2e2-bfc6ba78e818",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "post_number": "1",
+        "public_address": null,
+        "registry_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "registry_sequence": 0,
+        "selection": {
+          "address": false,
+          "followers_threshold": null
+        },
+        "state": "evidence-unavailable",
+        "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc",
+        "thread_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b",
+        "valid_when_published": null
+      },
+      {
+        "accepted_at": 1793012413,
+        "address_evidence_checked": false,
+        "authorship_checked": false,
+        "block_hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+        "block_number": 25,
+        "bundle_hash": "0xcd41b7d284f767c6267498f471a061e7b14a55fb1e5d4dcf305d2db97349b8ae",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "credential_evidence_checked": false,
+        "credential_expiry": 1793098800,
+        "credential_kind": 2,
+        "credential_status": "unavailable",
+        "observed_at": 1793012400,
+        "ordinal": 2,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "5e872f07-1bae-4ed1-ae71-23f0f6d87598",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "post_number": "2",
+        "public_address": null,
+        "registry_hash": "0x8ee856f7eed06e307e13cb44b6514b6e3b8e0ba729332ec7f743f98d72516369",
+        "registry_sequence": 1793011202,
+        "selection": {
+          "address": true,
+          "followers_threshold": 10000
+        },
+        "state": "evidence-unavailable",
+        "submission_id": "15804769d0b2c08468adf1f01b39914f3f134e9927020453f9aaab132ae02532",
+        "thread_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "transaction_hash": "0x3fd166101b6e34f2e4795c4f230a151c75614f0d8e0575b379bebaf32b568b94",
+        "valid_when_published": null
+      }
+    ],
+    "scope": "thread-catalog",
+    "thread_accepted": null,
+    "thread_id": null
+  },
+  "identity_chain_remapped_for_ui": true,
+  "network_or_owner_credentials_used": false,
+  "numbers": {
+    "checkpoint": {
+      "hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+      "number": "0x19"
+    },
+    "experimental": true,
+    "global_listing_complete": false,
+    "identity": {
+      "application": "0xabababababababababababababababababababababababababababababababab",
+      "author_native_sha256": "dc66398792965a5a7d458b548a3751f7f574bd4559da45529d2d66ac93dd44dd",
+      "bundle_profile": "nockapp-public-discussion-bundle-v4",
+      "chain_id": 84532,
+      "contract": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "count_native_sha256": "0d0ef1072d39bdcbb589b9dd2eef03554dfcf71571e99a41f916742a33a6461f",
+      "definition_hash": "30e4d5c3150aa78af9e8e9dae385a347914a27b40a91bd9a5510dceb80fb66b6",
+      "native_sha256": "7caf9649a8dd665ddeed096407d20e5406cf5b9a56d75fa3d6fa08b84abc5d09",
+      "profile": "nockapp-bundle-service-identity-v4",
+      "protocol": 4,
+      "registry": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "storage": {
+        "max_bundle_bytes": 32768,
+        "permanent_availability_proven": false,
+        "replicas": [
+          {
+            "failure_domain": "aws-region:ap-southeast-2",
+            "name": "replica-one"
+          },
+          {
+            "failure_domain": "aws-region:eu-west-1",
+            "name": "replica-two"
+          }
+        ],
+        "retention_seconds": 7776000
+      }
+    },
+    "last_canonical_number": "2",
+    "posts": [
+      {
+        "accepted_at": 1793012408,
+        "address_evidence_checked": false,
+        "authorship_checked": true,
+        "block_hash": "0x79355514235bdc0f7a6622ee6f8fd7f8298f866572b0e6a2af7081ef30bfe2a0",
+        "block_number": 24,
+        "bundle_hash": "0x228c03d193aa5f1235155bfc7b557ad5860ec02b62af9cc44cc342b11da30c55",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "content_source": "cache",
+        "credential_evidence_checked": false,
+        "credential_expiry": 0,
+        "credential_kind": 0,
+        "credential_status": "not-requested",
+        "disclosed_follower_count": null,
+        "experimental": true,
+        "observed_at": 0,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "4592df3d-2710-48c0-b2e2-bfc6ba78e818",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "post_number": "1",
+        "public_address": null,
+        "registry_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "registry_sequence": 0,
+        "selection": {
+          "address": false,
+          "followers_threshold": null
+        },
+        "state": "finalized",
+        "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc",
+        "thread_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b",
+        "valid_when_published": true
+      },
+      {
+        "accepted_at": 1793012413,
+        "address_evidence_checked": true,
+        "authorship_checked": true,
+        "block_hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+        "block_number": 25,
+        "bundle_hash": "0xcd41b7d284f767c6267498f471a061e7b14a55fb1e5d4dcf305d2db97349b8ae",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "content_source": "cache",
+        "credential_evidence_checked": true,
+        "credential_expiry": 1793098800,
+        "credential_kind": 2,
+        "credential_status": "valid-at-current-registry",
+        "disclosed_follower_count": null,
+        "experimental": true,
+        "observed_at": 1793012400,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "5e872f07-1bae-4ed1-ae71-23f0f6d87598",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "post_number": "2",
+        "public_address": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "registry_hash": "0x8ee856f7eed06e307e13cb44b6514b6e3b8e0ba729332ec7f743f98d72516369",
+        "registry_sequence": 1793011202,
+        "selection": {
+          "address": true,
+          "followers_threshold": 10000
+        },
+        "state": "finalized",
+        "submission_id": "15804769d0b2c08468adf1f01b39914f3f134e9927020453f9aaab132ae02532",
+        "thread_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "transaction_hash": "0x3fd166101b6e34f2e4795c4f230a151c75614f0d8e0575b379bebaf32b568b94",
+        "valid_when_published": true
+      }
+    ],
+    "scope": "explicit-post-numbers"
+  },
+  "ordinary_status": {
+    "experimental": true,
+    "phase": "submitted",
+    "post": {
+      "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+      "claims": [],
+      "created_at": 1793011200000,
+      "id": "4592df3d-2710-48c0-b2e2-bfc6ba78e818",
+      "kind": "thread",
+      "references": [
+        [
+          "https://x.com/i/status/3141592653589793",
+          "3141592653589793"
+        ]
+      ],
+      "thread_id": null,
+      "title": "Private author"
+    },
+    "renewal_count": 0,
+    "selection": {
+      "address": false,
+      "followers_threshold": null
+    },
+    "status": {
+      "address_evidence_checked": false,
+      "authorship_checked": true,
+      "checked_at": 1793012408,
+      "content_state": "locally-retained",
+      "credential_evidence_checked": false,
+      "post_number": "1",
+      "state": "finalized",
+      "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b"
+    },
+    "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc"
+  },
+  "outbox": {
+    "entries": [
+      {
+        "experimental": true,
+        "phase": "submitted",
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "4592df3d-2710-48c0-b2e2-bfc6ba78e818",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "renewal_count": 0,
+        "selection": {
+          "address": false,
+          "followers_threshold": null
+        },
+        "status": {
+          "address_evidence_checked": false,
+          "authorship_checked": false,
+          "checked_at": 1793012413,
+          "credential_evidence_checked": false,
+          "last_known": {
+            "checked_at": 1793012408,
+            "post_number": "1",
+            "state": "finalized",
+            "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b"
+          },
+          "recovery_action": "refresh-independent-verification",
+          "state": "recoverable"
+        },
+        "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc"
+      },
+      {
+        "experimental": true,
+        "phase": "submitted",
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "5e872f07-1bae-4ed1-ae71-23f0f6d87598",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "renewal_count": 0,
+        "selection": {
+          "address": true,
+          "followers_threshold": 10000
+        },
+        "status": {
+          "address_evidence_checked": false,
+          "authorship_checked": false,
+          "checked_at": 1793012413,
+          "credential_evidence_checked": false,
+          "last_known": {
+            "checked_at": 1793012413,
+            "post_number": "2",
+            "state": "finalized",
+            "transaction_hash": "0x3fd166101b6e34f2e4795c4f230a151c75614f0d8e0575b379bebaf32b568b94"
+          },
+          "recovery_action": "refresh-independent-verification",
+          "state": "recoverable"
+        },
+        "submission_id": "15804769d0b2c08468adf1f01b39914f3f134e9927020453f9aaab132ae02532"
+      }
+    ],
+    "experimental": true,
+    "more": false,
+    "next_after": 2
+  },
+  "page": {
+    "after": 0,
+    "canonical_total_count": "2",
+    "checkpoint": {
+      "hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+      "number": "0x19"
+    },
+    "content_complete": true,
+    "experimental": true,
+    "global_listing_complete": false,
+    "identity": {
+      "application": "0xabababababababababababababababababababababababababababababababab",
+      "author_native_sha256": "dc66398792965a5a7d458b548a3751f7f574bd4559da45529d2d66ac93dd44dd",
+      "bundle_profile": "nockapp-public-discussion-bundle-v4",
+      "chain_id": 84532,
+      "contract": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "count_native_sha256": "0d0ef1072d39bdcbb589b9dd2eef03554dfcf71571e99a41f916742a33a6461f",
+      "definition_hash": "30e4d5c3150aa78af9e8e9dae385a347914a27b40a91bd9a5510dceb80fb66b6",
+      "native_sha256": "7caf9649a8dd665ddeed096407d20e5406cf5b9a56d75fa3d6fa08b84abc5d09",
+      "profile": "nockapp-bundle-service-identity-v4",
+      "protocol": 4,
+      "registry": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "storage": {
+        "max_bundle_bytes": 32768,
+        "permanent_availability_proven": false,
+        "replicas": [
+          {
+            "failure_domain": "aws-region:ap-southeast-2",
+            "name": "replica-one"
+          },
+          {
+            "failure_domain": "aws-region:eu-west-1",
+            "name": "replica-two"
+          }
+        ],
+        "retention_seconds": 7776000
+      }
+    },
+    "index_gaps": [],
+    "last_canonical_number": "2",
+    "listing_complete": true,
+    "more": false,
+    "next_after": 2,
+    "page_complete": true,
+    "page_content_complete": true,
+    "page_evidence_complete": true,
+    "posts": [
+      {
+        "accepted_at": 1793012408,
+        "address_evidence_checked": false,
+        "authorship_checked": true,
+        "block_hash": "0x79355514235bdc0f7a6622ee6f8fd7f8298f866572b0e6a2af7081ef30bfe2a0",
+        "block_number": 24,
+        "bundle_hash": "0x228c03d193aa5f1235155bfc7b557ad5860ec02b62af9cc44cc342b11da30c55",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "content_source": "cache",
+        "credential_evidence_checked": false,
+        "credential_expiry": 0,
+        "credential_kind": 0,
+        "credential_status": "not-requested",
+        "disclosed_follower_count": null,
+        "experimental": true,
+        "observed_at": 0,
+        "ordinal": 1,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "4592df3d-2710-48c0-b2e2-bfc6ba78e818",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "post_number": "1",
+        "public_address": null,
+        "registry_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "registry_sequence": 0,
+        "selection": {
+          "address": false,
+          "followers_threshold": null
+        },
+        "state": "finalized",
+        "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc",
+        "thread_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b",
+        "valid_when_published": true
+      },
+      {
+        "accepted_at": 1793012413,
+        "address_evidence_checked": true,
+        "authorship_checked": true,
+        "block_hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+        "block_number": 25,
+        "bundle_hash": "0xcd41b7d284f767c6267498f471a061e7b14a55fb1e5d4dcf305d2db97349b8ae",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "content_source": "cache",
+        "credential_evidence_checked": true,
+        "credential_expiry": 1793098800,
+        "credential_kind": 2,
+        "credential_status": "valid-at-current-registry",
+        "disclosed_follower_count": null,
+        "experimental": true,
+        "observed_at": 1793012400,
+        "ordinal": 2,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "5e872f07-1bae-4ed1-ae71-23f0f6d87598",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "post_number": "2",
+        "public_address": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "registry_hash": "0x8ee856f7eed06e307e13cb44b6514b6e3b8e0ba729332ec7f743f98d72516369",
+        "registry_sequence": 1793011202,
+        "selection": {
+          "address": true,
+          "followers_threshold": 10000
+        },
+        "state": "finalized",
+        "submission_id": "15804769d0b2c08468adf1f01b39914f3f134e9927020453f9aaab132ae02532",
+        "thread_id": "0x9be47e00d993e196c299e88afde6571881b9e7ae10c36f806a8e932b78c2f8e8",
+        "transaction_hash": "0x3fd166101b6e34f2e4795c4f230a151c75614f0d8e0575b379bebaf32b568b94",
+        "valid_when_published": true
+      }
+    ],
+    "scope": "thread-catalog",
+    "thread_accepted": null,
+    "thread_id": null
+  },
+  "profile": "nockapp-authored-ui-contract-fixture-v4",
+  "real_native_tls_and_local_evm": true,
+  "selected_status": {
+    "experimental": true,
+    "phase": "submitted",
+    "post": {
+      "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+      "claims": [],
+      "created_at": 1793011200000,
+      "id": "5e872f07-1bae-4ed1-ae71-23f0f6d87598",
+      "kind": "thread",
+      "references": [
+        [
+          "https://x.com/i/status/3141592653589793",
+          "3141592653589793"
+        ]
+      ],
+      "thread_id": null,
+      "title": "Private author"
+    },
+    "renewal_count": 0,
+    "selection": {
+      "address": true,
+      "followers_threshold": 10000
+    },
+    "status": {
+      "address_evidence_checked": true,
+      "authorship_checked": true,
+      "checked_at": 1793012413,
+      "content_state": "locally-retained",
+      "credential_evidence_checked": true,
+      "post_number": "2",
+      "state": "finalized",
+      "transaction_hash": "0x3fd166101b6e34f2e4795c4f230a151c75614f0d8e0575b379bebaf32b568b94"
+    },
+    "submission_id": "15804769d0b2c08468adf1f01b39914f3f134e9927020453f9aaab132ae02532"
+  },
+  "source_chain_id": 31337,
+  "thread": {
+    "after": 0,
+    "canonical_total_count": "1",
+    "checkpoint": {
+      "hash": "0x87c5ddb7f919eeb0c61425734f45ba1181cb39c5df982301b517f4360609e5e9",
+      "number": "0x19"
+    },
+    "content_complete": true,
+    "experimental": true,
+    "global_listing_complete": false,
+    "identity": {
+      "application": "0xabababababababababababababababababababababababababababababababab",
+      "author_native_sha256": "dc66398792965a5a7d458b548a3751f7f574bd4559da45529d2d66ac93dd44dd",
+      "bundle_profile": "nockapp-public-discussion-bundle-v4",
+      "chain_id": 84532,
+      "contract": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "count_native_sha256": "0d0ef1072d39bdcbb589b9dd2eef03554dfcf71571e99a41f916742a33a6461f",
+      "definition_hash": "30e4d5c3150aa78af9e8e9dae385a347914a27b40a91bd9a5510dceb80fb66b6",
+      "native_sha256": "7caf9649a8dd665ddeed096407d20e5406cf5b9a56d75fa3d6fa08b84abc5d09",
+      "profile": "nockapp-bundle-service-identity-v4",
+      "protocol": 4,
+      "registry": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+      "storage": {
+        "max_bundle_bytes": 32768,
+        "permanent_availability_proven": false,
+        "replicas": [
+          {
+            "failure_domain": "aws-region:ap-southeast-2",
+            "name": "replica-one"
+          },
+          {
+            "failure_domain": "aws-region:eu-west-1",
+            "name": "replica-two"
+          }
+        ],
+        "retention_seconds": 7776000
+      }
+    },
+    "index_gaps": [],
+    "last_canonical_number": "2",
+    "listing_complete": true,
+    "more": false,
+    "next_after": 1,
+    "page_complete": true,
+    "page_content_complete": true,
+    "page_evidence_complete": true,
+    "posts": [
+      {
+        "accepted_at": 1793012408,
+        "address_evidence_checked": false,
+        "authorship_checked": true,
+        "block_hash": "0x79355514235bdc0f7a6622ee6f8fd7f8298f866572b0e6a2af7081ef30bfe2a0",
+        "block_number": 24,
+        "bundle_hash": "0x228c03d193aa5f1235155bfc7b557ad5860ec02b62af9cc44cc342b11da30c55",
+        "canonical_accepted": true,
+        "content_integrity_checked": true,
+        "content_source": "cache",
+        "credential_evidence_checked": false,
+        "credential_expiry": 0,
+        "credential_kind": 0,
+        "credential_status": "not-requested",
+        "disclosed_follower_count": null,
+        "experimental": true,
+        "observed_at": 0,
+        "ordinal": 1,
+        "post": {
+          "body": "EXACT PUBLIC TEXT REMAINS OFFCHAIN",
+          "claims": [],
+          "created_at": 1793011200000,
+          "id": "4592df3d-2710-48c0-b2e2-bfc6ba78e818",
+          "kind": "thread",
+          "references": [
+            [
+              "https://x.com/i/status/3141592653589793",
+              "3141592653589793"
+            ]
+          ],
+          "thread_id": null,
+          "title": "Private author"
+        },
+        "post_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "post_number": "1",
+        "public_address": null,
+        "registry_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "registry_sequence": 0,
+        "selection": {
+          "address": false,
+          "followers_threshold": null
+        },
+        "state": "finalized",
+        "submission_id": "6c90eeffe5d700b8925d583ae053e98a6bfc3413dec9394017a2bca1966898bc",
+        "thread_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6",
+        "transaction_hash": "0x6a983c2ac9ec044a2ee822e9a9e490d0cf470dbb42a88c61871fcf5d1695ec5b",
+        "valid_when_published": true
+      }
+    ],
+    "scope": "thread",
+    "thread_accepted": true,
+    "thread_id": "0xa5f9d45181a0dfcc57f7365c475db0c6ac51d9c8ae45d42fe0db98b5a392b1d6"
+  },
+  "wallet_keyring_source_storage_finality_aws_quote_are_fixtures": true
+}

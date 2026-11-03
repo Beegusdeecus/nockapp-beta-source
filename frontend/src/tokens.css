@@ -1,0 +1,16 @@
+:root {
+  --bg: #161916;
+  --text: #e3e5de;
+  --bright: #fffef6;
+  --muted: #a1a89b;
+  --subtle: #838d7c;
+  --line: #2a3028;
+  --line-strong: #3b4436;
+  --hover: #242b21;
+  --accent: #c1cdb2;
+  --error: #e9b4a4;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --serif: Georgia, 'Times New Roman', serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color-scheme: dark;
+}
