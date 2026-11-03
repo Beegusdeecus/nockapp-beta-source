@@ -6,6 +6,8 @@ The installed browser client, proposed paid-client update, terminal client, paym
 
 The current Nitro issuer image hash is `b618f8cdb92b59f984987578fadddb9c53d5deb779db2c311d71a8c71e48f6b3`; backend manifest `88f67f28833399ffe7eb93df3f25e69e32dcc32083a6145e796603995c605dc6`; installed browser manifest `df0f08af80d525a5464e1f1b9c0d3e8fa2359a5c3733c5319ac795fa10d92acd`. The paid client candidate and management tool are explicitly labelled. A source snapshot or manifest is not hardware attestation. Live deployment and acceptance evidence remains separate.
 
+Read [the implementation protocol reference](PROTOCOL.md) for exact encodings, post/credential bindings, ticket spend/recovery semantics and trust boundaries.
+
 ## Build and test
 
 For the extension, use Node >=22.12.0 in `frontend/`, run `npm ci`, install the pinned Playwright Chromium and ordinary Ubuntu browser dependencies, then run `NOCKAPP_HELPER_INSTALLER_PATH=../test-support/legacy-source-helper/tools/install-x-helper.py npm run check`. The explicit helper path supplies the retained stage-1 feasibility helper for one isolated legacy IPC test; it does not configure the beta issuer or read a live account. `package-lock.json` is authoritative; do not upgrade dependencies during reproduction. Tests use synthetic fixtures and isolated browser profiles. Optional browser scenarios may be skipped as labelled by the suite.
