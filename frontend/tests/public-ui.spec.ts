@@ -17,13 +17,13 @@ const test = base.extend<{ extension: { panel: Page; worker: Worker } }>({
   },
 });
 // UI/transport fixtures only: these mutations do not synthesize real proofs.
-async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean; emptyIdentity?: boolean; legacy?: boolean; legacyKind?: 'author-v4' | 'domain-v1'; failIdentitySetup?: boolean; badRead?: boolean; direct?: boolean; renewal?: boolean; lostSource?: boolean; failIdentityOptions?: boolean; failOutbox?: boolean } = {}) {
+async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean; emptyIdentity?: boolean; legacy?: boolean; legacyKind?: 'author-v4' | 'domain-v1'; failIdentitySetup?: boolean; badRead?: boolean; direct?: boolean; renewal?: boolean; lostSource?: boolean; failIdentityOptions?: boolean; failOutbox?: boolean; sourceAborted?: boolean; sourceFinality?: boolean } = {}) {
   await worker.evaluate(({ vectors, options }) => {
     const get = (op: string) => structuredClone(vectors.vectors.find((v: any) => v.operation === op).result);
     const template = get('public-numbers');const initial = template.posts[0];
     const state = { requests: [] as any[], entries: [] as any[], records: [initial] as any[], lost: !!options.lost,
       failRead: !!options.badRead, identity: !options.emptyIdentity, legacy: !!options.legacy,
-      sourcePending:false,sourceSaved:false,lostSource:!!options.lostSource };
+      sourcePending:false,sourceSaved:false,finalityComplete:false,lostSource:!!options.lostSource };
     if (options.junk) for (let n = 2; n <= 6; n++) state.records.push({ ...Object.fromEntries(Object.entries(initial).filter(([k]) =>
       ['bundle_hash', 'indexed_at', 'block_number', 'block_hash', 'transaction_hash', 'canonical_indexed'].includes(k))),
       post_number: String(n), state: 'content-unavailable', proofs_verified: false });
@@ -46,8 +46,9 @@ async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean
             if(m.operation==='public-source-begin')state.sourcePending=true;
             if(m.operation==='public-source-check-post'){state.sourcePending=false;state.sourceSaved=true;}
             if(m.operation==='public-source-cancel')state.sourcePending=false;
-            result={profile:'nockapp-renewal-enrollment-v3',state:m.operation==='public-source-cancel'?'cancelled':state.sourceSaved?'credential-saved':state.sourcePending?'waiting-for-source-post':'empty',
-              credential_saved:state.sourceSaved&&m.operation!=='public-source-cancel',post_text:state.sourcePending?'testing:'+'ab'.repeat(32):null};
+            const sourceState=m.operation==='public-source-cancel'?'cancelled':options.sourceAborted?'aborted':state.sourceSaved?options.sourceFinality&&!state.finalityComplete?'activation-pending-finality':'credential-saved':state.sourcePending?'waiting-for-source-post':'empty';
+            result={profile:'nockapp-renewal-enrollment-v3',state:sourceState,
+              credential_saved:sourceState==='credential-saved',post_text:state.sourcePending||options.sourceAborted&&m.operation!=='public-source-cancel'?'testing:'+'ab'.repeat(32):null};
             if(m.operation==='public-source-begin'&&state.lostSource){state.lostSource=false;for(const f of lostListeners)f();return;}
           }
           else if (m.operation === 'public-identity-options') { reject = !!options.failIdentityOptions;result = { identity_record_present: state.identity, sources: state.legacy ? [{ source_id: '34'.repeat(32), kind: options.legacyKind ?? 'author-v4', identity_record_present: true, pending_recovery: false }] : [] }; }
@@ -284,6 +285,45 @@ test('lost Twitter signup reply requires explicit recovery and never automatical
   await expect(panel.getByText('Verification was not confirmed.',{exact:false})).toHaveCount(0);
   const sent=await requests(worker);expect(sent.filter(r=>r.operation==='public-source-begin')).toHaveLength(1);
   expect(sent.filter(r=>r.operation==='public-source-recover')).toHaveLength(1);
+});
+
+test('aborted verification exposes explicit cancellation instead of sending the user back to recovery',async({extension:{panel,worker}})=>{
+  await fixture(worker,{renewal:true,sourceAborted:true});await open(panel);
+  await panel.getByText('Optional Twitter follower credential',{exact:true}).click();
+  await panel.getByLabel('I approve checking my Twitter profile and public verification challenge',{exact:true}).check();
+  await panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true}).click();
+  await expect(panel.getByText('Cancel this saved attempt below, then start again.',{exact:false})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true})).toHaveCount(0);
+  const cancel=panel.getByRole('button',{name:'Cancel saved Twitter verification',exact:true});
+  await expect(panel.getByLabel('Verification post URL or ID',{exact:true})).toHaveCount(0);
+  await expect(panel.getByLabel('Exact public verification challenge',{exact:true})).toHaveCount(0);
+  await expect(cancel).toBeVisible();await expect(cancel).toBeDisabled();
+  await panel.getByLabel('I approve cancelling the saved verification attempt',{exact:true}).check();await cancel.click();
+  await expect(panel.getByRole('button',{name:'Start Twitter verification',exact:true})).toBeVisible();
+  const sent=await requests(worker);expect(sent.filter(r=>r.operation==='public-source-cancel')).toHaveLength(1);
+  expect(sent.some(r=>r.operation==='public-source-begin')).toBe(false);
+});
+
+test('verification progress waits for finality and only completes after explicit saved recovery',async({extension:{panel,worker}})=>{
+  await fixture(worker,{renewal:true,sourceFinality:true});await open(panel);
+  await panel.getByText('Optional Twitter follower credential',{exact:true}).click();
+  const bar=panel.getByRole('progressbar',{name:'Twitter verification completion'});
+  await expect(bar).toHaveAttribute('value','0');
+  await panel.getByLabel('Twitter username',{exact:true}).fill('synthetic_user');
+  const consent=panel.getByLabel('I approve checking my Twitter profile and public verification challenge',{exact:true});
+  await consent.check();await panel.getByRole('button',{name:'Start Twitter verification',exact:true}).click();
+  await expect(bar).toHaveAttribute('value','1');
+  await panel.getByLabel('Verification post URL or ID',{exact:true}).fill('3141592653589793');
+  await consent.check();await panel.getByRole('button',{name:'Check my public verification post',exact:true}).click();
+  await expect(bar).toHaveAttribute('value','2');
+  await expect(panel.getByRole('region',{name:'Twitter verification progress'})).toContainText('not saved yet');
+  await expect(panel.getByLabel('Verification post URL or ID',{exact:true})).toHaveCount(0);
+  expect((await requests(worker)).filter(r=>r.operation==='public-source-check-post')).toHaveLength(1);
+  await worker.evaluate(()=>{(globalThis as any).publicFixture.finalityComplete=true;});
+  await consent.check();await panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true}).click();
+  await expect(bar).toHaveAttribute('value','3');
+  await expect(panel.getByRole('region',{name:'Twitter verification progress'})).toContainText('saved on this computer');
+  expect((await requests(worker)).filter(r=>r.operation==='public-source-check-post')).toHaveLength(1);
 });
 
 test('direct mode saves exact default-off authored intent without ticket or publication service requests',async({extension:{panel,worker}})=>{
