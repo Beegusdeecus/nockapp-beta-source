@@ -20,10 +20,14 @@ export function PublicSourceEnrollment({busy,identityPresent,run}: {busy:boolean
   const [cancelConsent,setCancelConsent]=useState(false);const [result,setResult]=useState<PublicSourceState>();
   const [notice,setNotice]=useState('');
   const [local,setLocal]=useState<PublicSourceStatus>();
+  const [uncertain,setUncertain]=useState(false);
+  const recoveryNeeded=uncertain||!!local?.renewal_pending||!!result&&!['empty','cancelled','credential-saved'].includes(result.state);
+  const challengeReady=!!result?.post_text;
   async function accept(work:()=>Promise<PublicSourceState>) {
     setNotice('Checking Twitter verification progress…');
-    try {setResult(await work());setNotice('');}
+    try {const next=await work();setResult(next);setUncertain(false);setLocal(undefined);setNotice('');}
     catch (error) {
+      setUncertain(true);
       setNotice('Verification was not confirmed. Check local follower credential, then recover a saved attempt instead of starting another.');
       throw error;
     } finally {setConsent(false);setCancelConsent(false);}
@@ -34,24 +38,27 @@ export function PublicSourceEnrollment({busy,identityPresent,run}: {busy:boolean
     {!identityPresent && <><p>Create or recover your private authorship identity first.</p><p>Open Private authorship setup and recovery above. If an existing key is offered, use its separate reuse consent.</p></>}
     <button disabled={busy} onClick={()=>void run(async()=>setLocal(await publicOperation<PublicSourceStatus>('public-source-status')))}>Check local follower credential</button>
     {local && <p>{local.credential_record_present?'A credential record is saved locally; this alone does not prove current eligibility.':'No credential record is saved locally.'} {local.renewal_pending?'A saved verification attempt needs recovery.':''}</p>}
-    <label>Twitter username<input value={username} onChange={e=>setUsername(e.target.value)} disabled={busy} autoComplete="off" /></label>
+    <p className="source-next-step"><strong>Next: </strong>{!identityPresent?'Set up your private identity above.':challengeReady?'Post the challenge, then paste its link below.':recoveryNeeded?'Recover your saved verification. No username is needed.':result?.state==='credential-saved'?'You’re ready. Choose a follower badge when writing a post.':'Check for a saved attempt, or enter your username to start.'}</p>
+    {!recoveryNeeded && <label>Twitter username<input value={username} onChange={e=>setUsername(e.target.value)} disabled={busy} autoComplete="off" /></label>}
     <label><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} />I approve checking my Twitter profile and public verification challenge</label>
-    {identityPresent && !busy && (!username.trim() ? <p>Enter your Twitter username to enable verification.</p> : !consent && <p>Tick the profile and challenge consent box to enable verification.</p>)}
-    <button disabled={busy||!identityPresent||!consent||!username.trim()} onClick={()=>void run(()=>accept(()=>publicOperation<PublicSourceState>('public-source-begin',{
+    {identityPresent && !busy && !consent && <p>Approve the profile check above to continue.</p>}
+    {!recoveryNeeded && <button disabled={busy||!identityPresent||!consent||!username.trim()} onClick={()=>void run(()=>accept(()=>publicOperation<PublicSourceState>('public-source-begin',{
       username:username.trim().replace(/^@/,''),approve_source_check:true,
-    })))}>Start Twitter verification</button>
+    })))}>Start Twitter verification</button>}
     <button disabled={busy||!identityPresent||!consent} onClick={()=>void run(()=>accept(()=>publicOperation<PublicSourceState>('public-source-recover',{approve_source_check:true})))}>Recover saved Twitter verification</button>
     {notice && <p aria-live="polite">{notice}</p>}
     {result && <p role="status">{labels[result.state] ?? 'Verification needs recovery.'}</p>}
     {result?.post_text && <><label htmlFor={challengeId}>Exact public verification challenge</label><textarea id={challengeId} readOnly value={result.post_text} />
       <button disabled={busy} onClick={()=>void run(()=>navigator.clipboard.writeText(result.post_text!))}>Copy public verification challenge</button></>}
-    <label>Verification post URL or ID<input value={post} onChange={e=>setPost(e.target.value)} disabled={busy} autoComplete="off" /></label>
+    {challengeReady && <><label>Verification post URL or ID<input value={post} onChange={e=>setPost(e.target.value)} disabled={busy} autoComplete="off" /></label>
     <button disabled={busy||!identityPresent||!consent||!post.trim()} onClick={()=>void run(()=>accept(()=>{
       const value=post.trim();const tweet_id=/^[1-9][0-9]{0,19}$/.test(value)?value:parsePostUrl(value).postId;
       return publicOperation<PublicSourceState>('public-source-check-post',{tweet_id,approve_source_check:true});
-    }))}>Check my public verification post</button>
+    }))}>Check my public verification post</button></>}
+    <details><summary>Cancel this verification</summary>
     <label><input type="checkbox" checked={cancelConsent} onChange={e=>setCancelConsent(e.target.checked)} />I approve cancelling the saved verification attempt</label>
     <button disabled={busy||!identityPresent||!cancelConsent} onClick={()=>void run(()=>accept(()=>publicOperation<PublicSourceState>('public-source-cancel',{approve_cancel:true})))}>Cancel saved Twitter verification</button>
+    </details>
     <p>Choose whether to show a follower threshold separately on each post. Both public badge choices remain off by default.</p>
   </details>;
 }

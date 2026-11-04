@@ -1,8 +1,24 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { publicProjection, validPublicBody, validPublicRow, validPublicSubmission, attachPublicDiscussion, PUBLIC_VERSION, PUBLIC_PORT } from '../src/publicDiscussion';
+import { publicProjection, validPublicBody, validPublicRow, validPublicSubmission, attachPublicDiscussion, publicOperation, PUBLIC_VERSION, PUBLIC_PORT } from '../src/publicDiscussion';
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/public-native-contract-v6-20261101.json', import.meta.url), 'utf8'));
 const vector = (op: string) => fixture.vectors.find((v: any) => v.operation === op);
+
+test('public UI errors distinguish a read from an uncertain mutation without echoing native text or retrying', async () => {
+  let listener: (value: unknown) => void = () => {};let error = 'recovery-needed';let sends = 0;
+  Object.assign(globalThis, { chrome: { runtime: { connect: () => ({
+    onMessage: { addListener: (fn: (value: unknown) => void) => { listener = fn; } },
+    onDisconnect: { addListener: () => {} }, disconnect: () => {},
+    postMessage: () => { sends++;listener({ version: PUBLIC_VERSION, error }); },
+  }) } } });
+  try {
+    await expect(publicOperation('public-page', { after: 0, limit: 4 })).rejects.toThrow('Your saved data is safe');
+    await expect(publicOperation('public-source-recover', { approve_source_check: true })).rejects.toThrow('Check the saved operation');
+    error = 'PRIVATE-ARBITRARY-NATIVE-TEXT';
+    await expect(publicOperation('public-page', { after: 0, limit: 4 })).rejects.toThrow('Public operation unavailable');
+    expect(sends).toBe(3);
+  } finally { Reflect.deleteProperty(globalThis, 'chrome'); }
+});
 
 test('actual native-v6 public contract admits real projections and consented exact bodies', () => {
   expect(fixture.profile).toBe('nockapp-public-browser-contract-v6-synthetic');

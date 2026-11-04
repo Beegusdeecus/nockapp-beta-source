@@ -28,6 +28,7 @@ export function PublicDiscussion() {
   const [input, setInput] = useState('');const [selected, setSelected] = useState('');
   const selectedRef = useRef('');
   const [error, setError] = useState('');const [localError, setLocalError] = useState('');const [notice, setNotice] = useState('');const [busy, setBusy] = useState(true);
+  const [loading, setLoading] = useState('Connecting to the installed helper…');
   const [history, setHistory] = useState('');const [linkConsent, setLinkConsent] = useState(false);
   const [createConsent, setCreateConsent] = useState(false);const [reuseConsent, setReuseConsent] = useState(false);
   const [identityNotice, setIdentityNotice] = useState('');
@@ -75,22 +76,30 @@ export function PublicDiscussion() {
       } finally { setCreateConsent(false);setReuseConsent(false); }
     });
   }
-  useEffect(() => {
-    mounted.current = true;const request = ++generation.current;
+  function initialize() {
+    const request = ++generation.current;
     void action(async () => {
+      setLoading('Connecting to the installed helper…');
       const c = await publicOperation<Capabilities>('public-capabilities');if (!mounted.current || request !== generation.current) return;
       scope.current = c.scope;setCaps(c);
-      const [reading, identity, saved] = await Promise.allSettled([
-        readPage(0, false), publicOperation<Options>('public-identity-options'), syncOutbox(),
+      setLoading('Checking your saved identity and posts…');
+      // The native bridge serializes requests. Check local state first, so a
+      // slow chain/content read cannot hide the identity and recovery controls.
+      const [identity, saved] = await Promise.allSettled([
+        publicOperation<Options>('public-identity-options').then(value => { if (mounted.current && request === generation.current) setOptions(value);return value; }), syncOutbox(),
       ]);
       if (!mounted.current || request !== generation.current) return;
-      if (identity.status === 'fulfilled') setOptions(identity.value);
       setLocalError([
         ...(identity.status === 'rejected' ? ['Private authorship setup is unavailable.'] : []),
         ...(saved.status === 'rejected' ? ['Saved public posts are unavailable. Saved data is preserved.'] : []),
       ].join(' '));
-      if (reading.status === 'rejected') { setStale(true);setError('Public records could not be refreshed. Saved content is retained.'); }
-    }, true);
+      setLoading('Loading public posts and checking their proofs…');
+      try { await readPage(0, false); }
+      catch { if (mounted.current) { setStale(true);setError('Public records could not be refreshed. Your saved posts are safe. Use Refresh current public page to try again.'); } }
+    }, true).finally(() => { if (mounted.current) setLoading(''); });
+  }
+  useEffect(() => {
+    mounted.current = true;initialize();
     return () => { mounted.current = false;generation.current++; };
   }, []);
   useEffect(() => {
@@ -181,8 +190,15 @@ export function PublicDiscussion() {
     </form>
     <p>Reading is free. Source filters cover loaded records only; unavailable records cannot be classified. No complete-history claim is made.</p>
     {(error || localError) && <p role="alert">{[error, localError].filter(Boolean).join(' ')}</p>}{notice && <p role="status">{notice}</p>}
+    {busy && <p aria-live="polite">{loading || 'Working… Keep this view open. Saved actions will not be submitted twice.'}</p>}
+    {!caps && !busy && <button onClick={initialize}>Reconnect to installed app</button>}
     {stale && <p>Last loaded content is retained. Its proof badges are hidden until an independent refresh succeeds.</p>}
     {caps && <>
+      <div className="public-actions"><button disabled={!options?.identity_record_present} onClick={() => { threadRef.current = undefined;setThread(undefined);setCreating(true); }}>Start public thread</button>
+        <button disabled={busy} onClick={() => void action(() => readPage(page?.after ?? 0, false), true)}>Refresh current public page</button>
+        {page?.more && <button disabled={busy} onClick={() => void action(() => readPage(page.next_after, true), true)}>Load next four public records</button>}
+        {thread && <button onClick={() => { threadRef.current = undefined;setThread(undefined); }}>Back to loaded records</button>}</div>
+      {(creating || thread) && <PublicComposer key={draftKey} draftKey={draftKey} reply={!!thread} direct={caps.publication_mode === 'direct'} onSubmit={submit} />}
       <PublicContentArchive scope={caps.scope} disabled={busy}/>
       <details><summary>Private authorship setup and recovery</summary>
         <p>Twitter and MetaMask are optional. Keep a secure copy of your authorship secret: losing every copy loses control. Restoring it does not restore missing credentials or tickets. Shared or stolen keys confer the same authority.</p>
@@ -208,11 +224,6 @@ export function PublicDiscussion() {
           <p>Purchases and cancellation use the separate ticket wallet screen.</p></>}
       </details>}
       {caps.publication_mode === 'direct' && <p>Direct-payment test: prepaid tickets are not configured. {!caps.source_enrollment_configured && 'Follower enrollment is not configured. '}Gas payment exposes your wallet address and can link posts. The payer is not proof of authorship. Read and author verification still run locally.</p>}
-      <div><button disabled={busy || !options} onClick={() => { threadRef.current = undefined;setThread(undefined);setCreating(true); }}>Start public thread</button>
-        <button disabled={busy} onClick={() => void action(() => readPage(page?.after ?? 0, false), true)}>Refresh current public page</button>
-        {page?.more && <button disabled={busy} onClick={() => void action(() => readPage(page.next_after, true), true)}>Load next four public records</button>}
-        {thread && <button onClick={() => { threadRef.current = undefined;setThread(undefined); }}>Back to loaded records</button>}</div>
-      {(creating || thread) && <PublicComposer key={draftKey} draftKey={draftKey} reply={!!thread} direct={caps.publication_mode === 'direct'} onSubmit={submit} />}
       <section aria-label="Public submission outbox"><h3>Saved public posts</h3>
         {caps.publication_mode === 'direct' && <label><input type="checkbox" checked={payerConsent} onChange={e=>setPayerConsent(e.target.checked)} />I approve revealing the gas payer's address and linking payments. I will approve at most 0.001 Base Sepolia test ETH in total wallet fees.</label>}
         {caps.publication_mode === 'direct' && <details><summary>Pay gas for a public bundle</summary>

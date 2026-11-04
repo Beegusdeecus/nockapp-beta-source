@@ -355,6 +355,18 @@ export function publicOperation<T = unknown>(operation: PublicOperation, supplie
     const abort = () => done(undefined, 'Operation stopped. Recover the saved purchase or post before retrying.');signal?.addEventListener('abort', abort, { once: true });
     try { port = api().runtime.connect({ name: PUBLIC_PORT });port.onDisconnect.addListener(() => { void api().runtime.lastError;done(undefined, 'The public helper disconnected. Recover the saved operation.'); });
       port.onMessage.addListener((v: unknown) => { try {
+        if (object(v) && v.version === PUBLIC_VERSION && exact(v, ['version', 'error']) && typeof v.error === 'string') {
+          const saved = ['public-capabilities','public-page','public-numbers','public-outbox','public-identity-options','public-source-status','public-ticket-status'].includes(operation)
+            ? 'Your saved data is safe. Try again when the service is available.'
+            : 'Check the saved operation before trying again; do not repeat a payment.';
+          const messages: Record<string, string> = {
+            'helper-busy': 'Another action is still running. Wait for it to finish.',
+            'helper-unavailable': 'The installed app is unavailable. Reopen this view. ' + saved,
+            'recovery-needed': 'The action could not be confirmed. ' + saved,
+            'unsupported-helper': 'The installed app returned an unsupported response. ' + saved,
+          };
+          if (Object.hasOwn(messages, v.error)) return done(undefined, messages[v.error]);
+        }
         if (!object(v) || v.version !== PUBLIC_VERSION || !exact(v, ['version', 'result']) || !publicProjection(operation, v.result, body)) return done(undefined, 'Public operation unavailable. Recover the saved purchase or post.');
         done(structuredClone(v.result));
       } catch { done(undefined, 'Unsupported public helper reply.'); } });

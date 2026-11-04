@@ -274,6 +274,10 @@ test('lost Twitter signup reply requires explicit recovery and never automatical
   await consent.check();await panel.getByRole('button',{name:'Start Twitter verification',exact:true}).click();
   await expect(panel.getByRole('alert')).toBeVisible();await expect(consent).not.toBeChecked();
   await expect(panel.getByText('Verification was not confirmed.',{exact:false})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Start Twitter verification',exact:true})).toHaveCount(0);
+  await expect(panel.getByLabel('Twitter username',{exact:true})).toHaveCount(0);
+  await expect(panel.getByLabel('Verification post URL or ID',{exact:true})).toHaveCount(0);
+  await expect(panel.getByText('Recover your saved verification. No username is needed.',{exact:false})).toBeVisible();
   expect((await requests(worker)).filter(r=>r.operation==='public-source-begin')).toHaveLength(1);
   await consent.check();await panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true}).click();
   await expect(panel.getByLabel('Exact public verification challenge',{exact:true})).toHaveValue('testing:'+'ab'.repeat(32));
