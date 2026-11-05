@@ -77,3 +77,5 @@ Frontend `363a0f2167db0e55cbc8d6ed1f3c693de0089b2c` distinguishes the historical
 `contracts/deployed-base-sepolia-v1/` now provides the original compiler input, public constructor/deployment values and a standalone pinned-solc checker reproducing all 1,010 deployed runtime bytes including metadata, plus the original creation bytecode. See its README. This closes the exact index build recipe gap; it does not establish whole-enclave reproducibility or complete live beta acceptance. Earlier component snapshots remain unchanged.
 
 The current composer can attach selected earlier authorship before signing, using the normal Publish action. Exact selected public references and consent survive recovery; missing or changed links block publication and wallet authorization. See evidence/selected-history-composer-release-v1.json. Live owner acceptance remains pending.
+
+Current client release12 can include an unarmed saved two-ticket pack in the50-ticket atomic checkout. See components/browser-included-ticket-client-v5/PARENT.json and evidence/included-ticket-client-v1.json. Owner payment and full beta acceptance remain pending.

@@ -12,3 +12,7 @@ Keep any authorship backup, credentials, tickets, saved payments and drafts. Nev
 50 tickets require one atomic MetaMask payment; unsupported accounts are stopped, not silently upgraded.
 Publication and Twitter verification have separate explicit owner actions.
 This package contains public deployment settings, not another user's identity or credentials.
+
+To prove earlier authorship, open that optional section in the composer, enter selected canonical post numbers, approve linking and use the normal Publish action. This uses one publication ticket, with no additional history button. Saved links are checked against the frozen bundle before publishing.
+
+Client release12 can include an unarmed saved two-ticket pack in one50-ticket payment, with explicit approval and canonical unpaid checks. It retains all recovery inputs; armed/paid/closed/refund attempts are not repurposed.

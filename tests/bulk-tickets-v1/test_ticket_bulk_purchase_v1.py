@@ -78,3 +78,46 @@ require(msg.sender==address(this) && msg.value==25*each);for(uint i=0;i<25;i++)P
         with self.assertRaisesRegex(Rejected,'paused'):self.bulk.recover(b['batch_id'],True)
         resumed=self.bulk.recover(b['batch_id'],True,resume=True)
         self.assertEqual(resumed['imported_tickets'],2);self.assertEqual(resumed['phase'],'importing')
+
+    def test_explicitly_include_unarmed_pack_preserves_exact_inputs_and_imports_fifty(self):
+        old=self.f.client.prepare_purchase(self.f.now,True);before=self.f.client._load()['pending']
+        b=self.bulk.prepare(self.f.now,True,include_prepared_pack=True)
+        self.assertEqual(self.bulk._read()['items'][0],before)
+        self.assertEqual(self.f.client._load()['pending'],before)
+        self.assertEqual(b['calls'][0]['data'],old['transaction']['data'])
+        self.assertEqual(self.bulk.prepare(self.f.now,True,include_prepared_pack=True),b)
+        with self.assertRaisesRegex(Rejected,'bulk-purchase-pending'):
+            self.f.client.arm_payment(old['pack_hash'],self.f.accounts[1],0,True)
+        self.bulk.arm(b['batch_id'],self.f.accounts[1],True)
+        self.assertIsNone(self.f.client._load()['pending']);self.assertEqual(self.bulk._read()['items'][0],before)
+        self.pay_batch(b)
+        for _ in range(25):result=self.bulk.recover(b['batch_id'],True)
+        self.assertEqual(result['phase'],'complete');self.assertEqual(self.f.client.status()['available'],50)
+
+    def test_include_rejects_armed_attempt_without_changing_it(self):
+        p=self.f.client.prepare_purchase(self.f.now,True);self.f.client.arm_payment(p['pack_hash'],self.f.accounts[1],0,True)
+        before=self.f.client._load()
+        with self.assertRaises(Rejected):self.bulk.prepare(self.f.now,True,include_prepared_pack=True)
+        self.assertEqual(self.f.client._load(),before);self.assertIsNone(self.bulk._read())
+
+    def test_include_rejects_recorded_payment_without_changing_it(self):
+        self.f.paid();before=self.f.client._load()
+        with self.assertRaises(Rejected):self.bulk.prepare(self.f.now,True,include_prepared_pack=True)
+        self.assertEqual(self.f.client._load(),before);self.assertIsNone(self.bulk._read())
+
+    def test_unrecorded_existing_chain_payment_stops_inclusion_without_writes(self):
+        p=self.f.client.prepare_purchase(self.f.now,True);before=self.f.client._load()
+        self.f.send(p['transaction'])
+        with self.assertRaises(Rejected):self.bulk.prepare(self.f.now,True,include_prepared_pack=True)
+        self.assertEqual(self.f.client._load(),before);self.assertIsNone(self.bulk._read())
+
+    def test_crash_after_batch_arm_before_single_slot_release_recovers_same_fifty(self):
+        self.f.client.prepare_purchase(self.f.now,True);before=self.f.client._load()['pending']
+        b=self.bulk.prepare(self.f.now,True,include_prepared_pack=True)
+        with patch.object(self.f.client,'_save',side_effect=RuntimeError('synthetic-before-slot-release')):
+            with self.assertRaises(RuntimeError):self.bulk.arm(b['batch_id'],self.f.accounts[1],True)
+        self.assertEqual(self.bulk.status()['phase'],'armed');self.assertEqual(self.f.client._load()['pending'],before)
+        with self.assertRaises(Rejected):self.bulk.arm(b['batch_id'],self.f.accounts[1],True)
+        self.pay_batch(b)
+        for _ in range(25):result=self.bulk.recover(b['batch_id'],True)
+        self.assertEqual(result['phase'],'complete');self.assertEqual(self.f.client.status()['available'],50)

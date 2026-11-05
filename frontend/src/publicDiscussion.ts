@@ -8,7 +8,7 @@ import { validRefundState, validRefundResult } from './publicRefunds';
 import { validArchive, validArchiveCapabilities, validArchiveExport, validArchiveRestore, validArchiveStatus } from './publicContentArchive';
 import { validBulkPurchase } from './bulkTickets';
 export const PUBLIC_PORT = 'nockapp-permissionless-discussion';
-export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-11';
+export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-12';
 const NATIVE = 'nockapp-zkid-public-post-native-v1';
 const integer = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
 const hex = (v: unknown, size = 64): v is string => typeof v === 'string' && new RegExp(`^[0-9a-f]{${size}}$`).test(v) && !/^0+$/.test(v);
@@ -85,7 +85,7 @@ export function validPublicCore(v: unknown): v is PublicCore {
 }
 export function validPublicBody(op: string, b: Record<string, unknown>): boolean {
   if(op==='public-ticket-bulk-status')return exact(b,[]);
-  if(op==='public-ticket-bulk-prepare')return exact(b,['ticket_count','approve_purchase'])&&b.ticket_count===50&&b.approve_purchase===true;
+  if(op==='public-ticket-bulk-prepare')return exact(b,['ticket_count','approve_purchase',...('include_prepared_pack'in b?['include_prepared_pack']:[])])&&(!('include_prepared_pack'in b)||b.include_prepared_pack===true)&&b.ticket_count===50&&b.approve_purchase===true;
   if(op==='public-ticket-bulk-arm')return exact(b,['batch_id','payer','approve_payment'])&&hex(b.batch_id)&&address(b.payer)&&b.approve_payment===true;
   if(op==='public-ticket-bulk-progress')return exact(b,['batch_id'])&&hex(b.batch_id);
   if(['public-ticket-bulk-recover','public-ticket-bulk-resume'].includes(op))return exact(b,['batch_id','approve_import'])&&hex(b.batch_id)&&b.approve_import===true;
@@ -282,9 +282,9 @@ export function publicProjection(op: string, v: unknown, b: Record<string, unkno
   if (op === 'public-wallet-request') return validPublicWalletShape(v) && v.post_id === b.post_id && v.address === b.address;
   if (['public-wallet-result','public-wallet-finish','public-wallet-recover','public-wallet-reset'].includes(op)) return validPublicSubmission(v) && v.core.post.id === b.post_id
     && (op === 'public-wallet-reset' ? v.bundle_hash === null : v.bundle_hash !== null) && v.verification_current === false;
-  if (op === 'public-capabilities') return exact(v, ['configured', 'protocol', 'scope', 'follower_proof_configured', 'verifier_release', 'anonymous_ticket_packs', 'source_enrollment_configured', 'historical_issuer_views',...([7,9,10,11].includes(Number(v.verifier_release))?['refund_payout_configured']:[]),...([8,9,10,11].includes(Number(v.verifier_release))?['publication_mode']:[])])
+  if (op === 'public-capabilities') return exact(v, ['configured', 'protocol', 'scope', 'follower_proof_configured', 'verifier_release', 'anonymous_ticket_packs', 'source_enrollment_configured', 'historical_issuer_views',...([7,9,10,11,12].includes(Number(v.verifier_release))?['refund_payout_configured']:[]),...([8,9,10,11,12].includes(Number(v.verifier_release))?['publication_mode']:[])])
     && v.configured === true && v.protocol === 5 && validPublicScope(v.scope)
-    && ([9,10,11].includes(v.verifier_release as number) ? ['direct','tickets'].includes(String(v.publication_mode)) && v.anonymous_ticket_packs === (v.publication_mode === 'tickets')
+    && ([9,10,11,12].includes(v.verifier_release as number) ? ['direct','tickets'].includes(String(v.publication_mode)) && v.anonymous_ticket_packs === (v.publication_mode === 'tickets')
       && v.follower_proof_configured === true && v.source_enrollment_configured === true && v.historical_issuer_views === true
       && typeof v.refund_payout_configured === 'boolean' && (!v.refund_payout_configured || v.publication_mode === 'tickets')
       : v.verifier_release === 8 ? v.publication_mode === 'direct' && v.anonymous_ticket_packs === false

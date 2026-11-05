@@ -4,7 +4,7 @@ import { publicOperation, type TicketPaymentProgress } from '../publicDiscussion
 import { formatEth, type TicketOffer } from '../publicTickets';
 import { requireAtomicWallet, sendBulkPurchase, validateBulkPurchase, type BulkPurchase } from '../bulkTickets';
 
-export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false}:{offer:TicketOffer;onRefresh:()=>void;onActive:(active:boolean)=>void;canRefund?:boolean}){
+export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,includePreparedPack=false}:{offer:TicketOffer;onRefresh:()=>void;onActive:(active:boolean)=>void;canRefund?:boolean;includePreparedPack?:boolean}){
   const [saved,setSaved]=useState<BulkPurchase>();const [loaded,setLoaded]=useState(false);const [consent,setConsent]=useState(false);
   const [reviewed,setReviewed]=useState<{batch:string;payer:string}>();const [busy,setBusy]=useState(false);const [error,setError]=useState('');
   const [status,setStatus]=useState('Checking your saved purchase…');const [chain,setChain]=useState<TicketPaymentProgress>();
@@ -29,7 +29,7 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false}:{o
     setStatus('Checking MetaMask supports one atomic payment…');
     const payer=await connectBaseWallet();await requireAtomicWallet(payer);
     setStatus('Saving all 50 blinded tickets before requesting any payment…');
-    const next=await accept(await publicOperation('public-ticket-bulk-prepare',{ticket_count:50,approve_purchase:true}));
+    const next=await accept(await publicOperation('public-ticket-bulk-prepare',{ticket_count:50,approve_purchase:true,...(includePreparedPack?{include_prepared_pack:true}:{})}));
     if(!next||next.phase!=='prepared')throw Error('A saved purchase already exists. Check its progress; do not pay again.');
     setReviewed({batch:next.batch_id,payer});setStatus('Review 50 tickets, then confirm the total and network fee in MetaMask.');
   }
@@ -81,6 +81,7 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false}:{o
       {saved?.phase==='armed'&&chain&&<p>Finalized block {chain.finalized_block.toLocaleString()} · Latest block {chain.latest_block.toLocaleString()}. Checks update automatically every 30 seconds while this page is visible.</p>}
     </section>
     {error&&<p role="alert">{error}</p>}
+    {includePreparedPack&&<p>Your saved two-ticket pack is included in these 50 tickets. Its recovery data is preserved; there is no separate two-ticket payment.</p>}
     {loaded&&(!saved||saved.phase==='prepared')&&<>
       <p>The operator holds prepaid funds and can refuse service or lose them. Tickets do not hide your IP address or purchase timing. Issued tickets cannot be refunded. Unissued-pack refunds follow the existing capped reserve policy.</p>
       <label><input type="checkbox" checked={consent} disabled={busy} onChange={e=>{setConsent(e.target.checked);setReviewed(undefined);}}/>I accept the price, expiry and prepaid custody risk for 50 tickets.</label>
