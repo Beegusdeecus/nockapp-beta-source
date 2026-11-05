@@ -27,6 +27,20 @@ test('actual native-v6 public contract admits real projections and consented exa
     expect(publicProjection(v.operation, v.result, v.body), `${v.operation} result`).toBe(true);
   }
 });
+test('expired badge recovery needs exact separate consent and exposes only a public window status', () => {
+  const body = { post_id: vector('public-prepare').body.post.id, approve_publication: true };
+  expect(validPublicBody('public-publish', { ...body, approve_optional_badge_failure: true })).toBe(true);
+  for (const value of [false, 1, 'true']) expect(validPublicBody('public-publish', { ...body, approve_optional_badge_failure: value })).toBe(false);
+  expect(validPublicBody('public-finish', { ...body, approve_optional_badge_failure: true })).toBe(false);
+  const row = vector('public-prepare').result;
+  expect(validPublicSubmission({ ...row, follower_window: 'expired' })).toBe(true);
+  expect(validPublicSubmission({ ...row, follower_window: 'private-credential' })).toBe(false);
+  expect(validPublicSubmission({ ...row, follower_window: 'expired', expires_at: 123 })).toBe(false);
+  const caps = { ...vector('public-capabilities').result, verifier_release: 10, publication_mode: 'tickets', refund_payout_configured: false,
+    follower_proof_configured: true, source_enrollment_configured: true };
+  expect(publicProjection('public-capabilities', caps)).toBe(true);
+  expect(publicProjection('public-capabilities', { ...caps, verifier_release: '10' })).toBe(false);
+});
 test('valid authored text survives two selected but missing badges and retains canonical unavailable numbers', () => {
   const page = vector('public-numbers');const row = page.result.posts[0];
   expect(validPublicRow(row)).toBe(true);expect(row.display).toEqual({ address: null, followers: null, history: null });
@@ -116,7 +130,7 @@ test('disconnect releases global public operation ownership and drops late repli
 });
 // Built background is also checked in background.spec.ts; constant is pinned here.
 test('public port is a distinct protocol, with no reinterpretation of v4 traffic', () => {
-  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-8');
+  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-9');
 });
 
 test('actual cursor-page vectors preserve empty ranges and cannot skip or invent allocations', () => {

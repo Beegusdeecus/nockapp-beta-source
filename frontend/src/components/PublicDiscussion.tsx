@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { canonicalAscii } from '../authoredWallet';
-import { publicOperation, type PublicScope, type PublicSubmission, type PublicRow, type PublicReference, type PublicPage, type PublicSelection } from '../publicDiscussion';
+import { publicOperation, PublicOperationError, type PublicScope, type PublicSubmission, type PublicRow, type PublicReference, type PublicPage, type PublicSelection } from '../publicDiscussion';
 import { acknowledgePublicIntent, intentBody, preparePublicIntent, publicIntents, samePublicScope, type PublicIntent } from '../data/publicIntents';
 import { readDraft, clearDraftIfUnchanged, type Draft } from '../data/drafts';
 import { parsePostUrl } from '../urls';
@@ -23,7 +23,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
   const [caps, setCaps] = useState<Capabilities>();const scope = useRef<PublicScope | undefined>(undefined);
   const [options, setOptions] = useState<Options>();const [tickets, setTickets] = useState<Tickets>();
   const [ticketsOpen,setTicketsOpen]=useState(false);const [ticketInventoryError,setTicketInventoryError]=useState(false);
-  const inventoryChecking=useRef(false);
+  const [ticketNeededFor,setTicketNeededFor]=useState<string>();
   const [rows, setRows] = useState<PublicRow[]>([]);const [page, setPage] = useState<PublicPage>();const [stale, setStale] = useState(false);
   const [freshNumbers, setFreshNumbers] = useState<Set<string>>(new Set());
   const threadRef = useRef<PublicRow | undefined>(undefined);
@@ -174,13 +174,36 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
     working.current = true;setBusy(true);setError('');
     setLoading('Saving your exact publication request…');
     try {
+      if(caps.anonymous_ticket_packs){
+        setPublicationStarted(Math.floor(Date.now()/1000));setPublicationStage(0);setLoading('Checking publication tickets before preparing your comment…');
+        let inventory:Tickets;
+        try{inventory=await publicOperation<Tickets>('public-ticket-status');setTickets(inventory);}
+        catch{throw Error('Ticket availability could not be checked. Your comment is still a draft; no publication was prepared.');}
+        if(inventory.available<1)throw Error('No publication tickets available. Buy or recover tickets; your comment is still a draft.');
+      }
       const value: PublicIntent = { scope: caps.scope, draft_key: draftKey,
         post: { kind: thread ? 'comment' : 'thread', id: crypto.randomUUID(), created_at: Math.floor(Date.now() / 1000), title: thread ? null : draft.title.trim(),
           body: draft.body.trim(), references: selected ? [[selected, parsePostUrl(selected).postId]] : [] }, selection,
         thread: thread ? captureRef(thread, caps.scope) : null, references: [], acknowledged: false, released: false };
       const intent = await preparePublicIntent(value);setIntents((await publicIntents()).filter(r => samePublicScope(r.scope, caps.scope)));
       await continueIntent(intent);return intent.post.id;
-    } finally { working.current = false;if (mounted.current) setBusy(false); }
+    } catch(error){
+      if(mounted.current){setError(error instanceof Error?error.message:'Publication unavailable. Your draft is preserved.');
+      }
+      return null;
+    } finally { working.current = false;if (mounted.current){setBusy(false);setPublicationStage(undefined);} }
+  }
+  async function publishSaved(row:PublicSubmission,approveOptionalBadgeFailure=false){
+    try{
+      const result=await publicOperation<PublicSubmission>('public-publish',{post_id:row.core.post.id,approve_publication:true,
+        ...(approveOptionalBadgeFailure?{approve_optional_badge_failure:true}:{})});
+      checkSubmission(result);
+      if(canonicalAscii(result.core)!==canonicalAscii(row.core)||result.bundle_hash!==row.bundle_hash)throw Error('The saved publication changed. Keep its original operation.');
+      setTicketNeededFor(old=>old===row.core.post.id?undefined:old);await syncOutbox();published(result);
+    }catch(error){
+      if(error instanceof PublicOperationError&&error.code==='publication-ticket-needed')setTicketNeededFor(row.core.post.id);
+      throw error;
+    }
   }
   async function openRow(row: PublicRow, freshlyFetched = false) {
     if ((!freshlyFetched && (stale || !freshNumbers.has(row.post_number))) || !row.proofs_verified || row.relationship_state !== 'valid') throw new Error('Independently refresh this post before opening its thread.');
@@ -267,20 +290,19 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
   },[mode,outboxUnavailable]);
 
   useEffect(()=>{
-    if(!ticketsOpen||busy||tickets||ticketInventoryError||inventoryChecking.current)return;
-    inventoryChecking.current=true;
-    void action(async()=>{
-      setLoading('Checking your available publication tickets…');
-      try{setTickets(await publicOperation<Tickets>('public-ticket-status'));}
-      catch{setTicketInventoryError(true);}
-      finally{inventoryChecking.current=false;}
-    });
-  },[ticketsOpen,busy,tickets,ticketInventoryError]);
+    if(!caps?.anonymous_ticket_packs||!ticketsOpen||busy||tickets||ticketInventoryError)return;
+    let live=true;
+    void(async()=>{
+      try{const value=await publicOperation<Tickets>('public-ticket-status');if(live)setTickets(value);}
+      catch{if(live)setTicketInventoryError(true);}
+    })();
+    return()=>{live=false;};
+  },[caps?.anonymous_ticket_packs,ticketsOpen,busy,tickets,ticketInventoryError]);
   useEffect(()=>{
-    const refresh=()=>{if(ticketsOpen&&document.visibilityState==='visible'){setTicketInventoryError(false);setTickets(undefined);}};
+    const refresh=()=>{if((ticketsOpen||mode==='editor')&&document.visibilityState==='visible'){setTicketInventoryError(false);setTickets(undefined);setTicketNeededFor(undefined);}};
     window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
     return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
-  },[ticketsOpen]);
+  },[ticketsOpen,mode]);
   const shown = thread ? [thread, ...known.filter(r => r.post_number !== thread.post_number)].sort((a, b) => Number(a.post_number) - Number(b.post_number)) : known;
   const pendingIds = intents.filter(i => !outbox.some(o => o.core.post.id === i.post.id));
   const unfinished=outbox.filter(row=>row.last_known?.state!=='finalized'&&inThisView(row));
@@ -316,6 +338,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
           <h3>{row.core.post.kind==='comment'?'Your comment':'Your thread'}</h3>
           <p>{row.core.thread?.number?`Reply to thread No.${row.core.thread.number}`:'New thread'}{row.core.post.title?` · ${row.core.post.title}`:''}</p>
           <PostBody body={row.core.post.body} className="post-body" onReference={n=>void api().tabs.create({url:forumURL(n)})}/>
+          {row.bundle_hash&&!row.last_attempt&&['closing','expired'].includes(row.follower_window??'')&&<p role="status">The saved follower proof has run out of time. You can publish these exact bytes, but the follower badge may be missing. The original ticket assignment stays with this comment.</p>}
           {(row.last_attempt||row.phase==='submitted')&&row.last_known?.state!=='invalid'?<PublicationProgress stage={3}
             startedAt={row.last_attempt?.requested_at??row.core.post.created_at} checkedAt={row.last_known?.checked_at}
             checking={publicationChecks[row.core.post.id]==='checking'}
@@ -324,10 +347,14 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
           {row.bundle_hash&&!row.last_attempt&&row.phase!=='submitted'&&row.last_known?.state!=='invalid'&&publicationChecks[row.core.post.id]!=='checked'&&<progress aria-label="Recovering publication status"/>}
           {row.core.selection.address&&!row.bundle_hash&&<button disabled={busy} onClick={()=>void api().tabs.create({url:api().runtime.getURL(`public-wallet.html#post=${row.core.post.id}`)})}>Authorize this post in MetaMask</button>}
           {row.phase!=='submitted'&&!row.last_attempt&&row.last_known?.state!=='invalid'&&(!row.bundle_hash||publicationChecks[row.core.post.id]==='checked')&&<button disabled={busy} onClick={()=>void action(async()=>{
+            if(ticketNeededFor===row.core.post.id){await api().tabs.create({url:api().runtime.getURL('public-tickets.html')});return;}
+            if(row.bundle_hash&&['closing','expired'].includes(row.follower_window??'')){
+              await publishSaved(row,true);return;
+            }
             const intent=intents.find(i=>i.post.id===row.core.post.id);if(intent)await continueIntent(intent);
-            else if(row.bundle_hash){const r=await publicOperation<PublicSubmission>('public-publish',{post_id:row.core.post.id,approve_publication:true});checkSubmission(r);await syncOutbox();published(r);}
+            else if(row.bundle_hash)await publishSaved(row);
             else throw Error('The original publication request is unavailable. Your draft is preserved.');
-          })}>{row.core.post.kind==='comment'?'Publish this comment':'Publish this thread'}</button>}
+          })}>{ticketNeededFor===row.core.post.id?'Buy or recover tickets':row.bundle_hash&&['closing','expired'].includes(row.follower_window??'')?'Publish even if badge is missing':row.core.post.kind==='comment'?'Publish this comment':'Publish this thread'}</button>}
 
           {!row.bundle_hash&&<details><summary>Prove earlier authorship</summary>
             <label>Earlier post numbers<input value={history} onChange={e=>setHistory(e.target.value)} placeholder="1, 2"/></label>
@@ -342,7 +369,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
           <p>No submission was confirmed. This action prepares and publishes only the exact text above.</p>
           <button disabled={busy||outboxUnavailable} onClick={()=>void action(()=>continueIntent(i))}>{i.post.kind==='comment'?'Publish this comment':'Publish this thread'}</button>
         </section>)}
-        {options?.identity_record_present&&!busy&&!outboxUnavailable&&!unfinished.length&&!interrupted.length&&<PublicComposer key={draftKey} draftKey={draftKey} reply={!!root} direct={caps.publication_mode==='direct'} onSubmit={submit}/>}
+        {options?.identity_record_present&&!busy&&!outboxUnavailable&&!unfinished.length&&!interrupted.length&&<PublicComposer key={draftKey} draftKey={draftKey} reply={!!root} direct={caps.publication_mode==='direct'} availableTickets={tickets?.available} onNeedTickets={()=>void api().tabs.create({url:api().runtime.getURL('public-tickets.html')})} onSubmit={submit}/>}
         {(unfinished.length>0||interrupted.length>0)&&<p>Resolve the publication above before writing another. Your draft is preserved.</p>}
 
         {publishedNumber&&<section className="forum-success" aria-label="Completed publication"><p>Published as <a href={forumURL(publishedNumber)}>No.{publishedNumber}</a>. Finalized and independently checked.</p>
@@ -366,7 +393,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
         <button disabled={busy} onClick={() => void action(() => readPage(page?.after ?? 0, false), true)}>Refresh current public page</button>
         {page?.more && <button disabled={busy} onClick={() => void action(() => readPage(page.next_after, true), true)}>Load next four public records</button>}
         {thread && <button onClick={() => { threadRef.current = undefined;setThread(undefined); }}>Back to loaded records</button>}</div>
-      {(creating || thread) && <PublicComposer key={draftKey} draftKey={draftKey} reply={!!thread} direct={caps.publication_mode === 'direct'} onSubmit={submit} />}
+      {(creating || thread) && <PublicComposer key={draftKey} draftKey={draftKey} reply={!!thread} direct={caps.publication_mode === 'direct'} availableTickets={tickets?.available} onNeedTickets={()=>void api().tabs.create({url:api().runtime.getURL('public-tickets.html')})} onSubmit={submit} />}
       <PublicContentArchive scope={caps.scope} disabled={busy}/>
       <details><summary>Private authorship setup and recovery</summary>
         <p>Twitter and MetaMask are optional. Keep a secure copy of your authorship secret: losing every copy loses control. Restoring it does not restore missing credentials or tickets. Shared or stolen keys confer the same authority.</p>

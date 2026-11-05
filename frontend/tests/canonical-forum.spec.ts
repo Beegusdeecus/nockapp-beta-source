@@ -15,10 +15,11 @@ async function fixture(w:Worker,missingRoot=false,recovery=''){
     const unavailable={...Object.fromEntries(Object.entries(root).filter(([k])=>['bundle_hash','indexed_at','block_number','block_hash','transaction_hash','canonical_indexed'].includes(k))),post_number:'2',state:'content-unavailable',proofs_verified:false};
     const rows=[root,unavailable,reply(3),reply(4),reply(5),reply(6)];
     if(missingRoot){rows[0]={...unavailable,post_number:'1'};for(const r of rows.slice(2))r.relationship_state='unverified';}
-    const state={calls:[] as any[],rows,entries:[] as any[],fail:false,hold:false,release:()=>{}};Object.assign(globalThis,{forumFixture:state});
+    const state={calls:[] as any[],rows,entries:[] as any[],availableTickets:2,fail:false,hold:false,release:()=>{}};Object.assign(globalThis,{forumFixture:state});
     const saved=get('public-prepare');saved.core.post={...reply(7).post,body:'The exact interrupted comment'};saved.core.thread=ref;saved.core.selection={address:false,followers_threshold:null};saved.bundle_hash='0x'+'55'.repeat(32);saved.phase='bundle-saved';
     if(['pending','pending-then-final','unavailable','edited-draft'].includes(recovery))saved.last_attempt={requested_at:Math.floor(Date.now()/1000)};
     if(recovery==='finalized-no-badge')saved.core.selection.followers_threshold=0;
+    if(recovery.startsWith('expired')){saved.core.selection.followers_threshold=0;saved.follower_window='expired';state.availableTickets=0;}
     if(recovery&&recovery!=='lost-reply')state.entries.push(saved);
     Object.assign(state,{statusReady:false});
     if(recovery==='edited-draft'){
@@ -28,8 +29,12 @@ async function fixture(w:Worker,missingRoot=false,recovery=''){
     chrome.runtime.connectNative=(()=>{
       const listeners=new Set<(v:unknown)=>void>();return {onMessage:{addListener:(f:any)=>listeners.add(f),removeListener:(f:any)=>listeners.delete(f)},onDisconnect:{addListener:()=>{},removeListener:()=>{}},disconnect:()=>{},postMessage:(m:any)=>{
         state.calls.push(structuredClone(m));let result:any;
-        if(m.operation==='public-capabilities')result=get(m.operation);
+        if(m.operation==='public-capabilities'){
+          result=get(m.operation);
+          if(recovery.startsWith('expired'))Object.assign(result,{verifier_release:10,publication_mode:'tickets',follower_proof_configured:true,source_enrollment_configured:true,historical_issuer_views:true,refund_payout_configured:false});
+        }
         else if(m.operation==='public-identity-options')result={identity_record_present:true,sources:[]};
+        else if(m.operation==='public-ticket-status')result={...structuredClone(vectors.vectors.filter((v:any)=>v.operation===m.operation).at(-1).result),available:state.availableTickets,reserved:6};
         else if(m.operation==='public-outbox')result={entries:state.entries.map(r=>({...r,verification_current:false})),next_after:null};
         else if(m.operation==='public-page'||m.operation==='public-numbers'){
           const numbers=m.operation==='public-page'?state.rows.filter(r=>Number(r.post_number)>m.body.after).slice(0,m.body.limit).map(r=>Number(r.post_number)):m.body.numbers;
@@ -38,6 +43,9 @@ async function fixture(w:Worker,missingRoot=false,recovery=''){
         }else if(m.operation==='public-prepare'){
           result=get('public-prepare');Object.assign(result.core,{post:m.body.post,selection:m.body.selection,thread:m.body.thread,references:m.body.references});result.phase='prepared';state.entries.push(result);
         }else if(m.operation==='public-finish'||m.operation==='public-publish'||m.operation==='public-check'){
+          if(m.operation==='public-publish'&&recovery==='expired-no-ticket'){
+            queueMicrotask(()=>listeners.forEach(f=>f({profile:m.profile,id:m.id,status:'rejected',code:'publication-ticket-needed',recoverable:true,laboratory:true,verified:false})));return;
+          }
           result=state.entries.find(r=>r.core.post.id===m.body.post_id);result.bundle_hash??='0x'+'55'.repeat(32);result.verification_current=m.operation!=='public-finish';
           if(m.operation==='public-finish')result.phase='bundle-saved';
           else if(m.operation==='public-publish'){
@@ -164,7 +172,7 @@ for(const recovery of ['finalized','finalized-no-badge','pending','unsent','unav
     expect(calls.some((r:any)=>r.operation==='public-check')).toBe(true);
     expect(calls.filter((r:any)=>r.operation==='public-publish')).toHaveLength(recovery==='lost-reply'?1:0);
     expect(calls.filter((r:any)=>r.operation==='public-prepare')).toHaveLength(recovery==='lost-reply'?1:0);
-    expect(calls.filter((r:any)=>r.operation.startsWith('public-ticket-'))).toHaveLength(0);
+    expect(calls.filter((r:any)=>r.operation.startsWith('public-ticket-'))).toHaveLength(recovery==='lost-reply'?1:0);
   }finally{await c.close();await rm(profile,{recursive:true,force:true});}
 });
 
@@ -184,5 +192,42 @@ test('pending comment shows progress and finalizes automatically without reload 
     await expect(p.getByRole('region',{name:'Thread posts'}).getByRole('link',{name:'Open post No.7',exact:true})).toBeVisible();
     const calls=await w.evaluate(()=>(globalThis as any).forumFixture.calls);expect(calls.filter((r:any)=>r.operation==='public-check').length).toBeGreaterThan(1);
     expect(calls.filter((r:any)=>r.operation==='public-publish'||r.operation.startsWith('public-ticket-'))).toHaveLength(0);
+  }finally{await c.close();await rm(profile,{recursive:true,force:true});}
+});
+
+for(const scenario of ['ticket-preflight','expired','expired-no-ticket'])test(`saved publication recovery ${scenario}`,async()=>{
+  const profile=await mkdtemp(resolve(tmpdir(),'nockapp-publication-recovery-'));const extension=resolve('dist');
+  const c=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,viewport:{width:390,height:844},args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`,'--no-sandbox']});
+  try{
+    const w=c.serviceWorkers()[0]??await c.waitForEvent('serviceworker');await fixture(w,false,scenario==='ticket-preflight'?'':scenario);
+    const p=await c.newPage();await p.goto(`chrome-extension://${new URL(w.url()).host}/forum.html?post=3#post-3`);
+    if(scenario==='ticket-preflight'){
+      await p.getByRole('textbox',{name:'Your comment',exact:true}).fill('Keep my exact draft when tickets are empty');
+      await p.getByText('Optional public disclosures',{exact:true}).click();await p.getByLabel('Prove followers greater than a threshold').check();
+      await p.getByLabel('Follower threshold',{exact:true}).fill('0');
+      await w.evaluate(()=>{(globalThis as any).forumFixture.availableTickets=0;});
+      await p.getByRole('button',{name:'Publish anonymous public comment',exact:true}).click();
+      await expect(p.getByRole('alert')).toContainText('No publication tickets available');
+      await expect(p.getByRole('textbox',{name:'Your comment',exact:true})).toHaveValue('Keep my exact draft when tickets are empty');
+      await expect(p.getByRole('button',{name:'Buy or recover tickets',exact:true})).toBeVisible();
+      const calls=await w.evaluate(()=>(globalThis as any).forumFixture.calls);
+      expect(calls.filter((r:any)=>r.operation==='public-ticket-status')).toHaveLength(1);
+      expect(calls.some((r:any)=>['public-prepare','public-attach-followers','public-finish','public-publish','public-ticket-prepare','public-ticket-arm'].includes(r.operation))).toBe(false);
+    }else{
+      const card=p.getByRole('region',{name:'Unfinished publication'});
+      await expect(card).toContainText('The exact interrupted comment');await expect(card).toContainText('follower badge may be missing');
+      const publish=card.getByRole('button',{name:'Publish even if badge is missing',exact:true});await expect(publish).toBeEnabled();
+      expect((await w.evaluate(()=>(globalThis as any).forumFixture.calls)).some((r:any)=>r.operation==='public-publish')).toBe(false);
+      await card.screenshot({path:`/tmp/nockapp-${scenario}-recovery.png`});await publish.click();
+      if(scenario==='expired-no-ticket'){
+        await expect(p.getByRole('alert')).toContainText('No ticket is available for this comment');
+        await expect(card.getByRole('button',{name:'Buy or recover tickets',exact:true})).toBeVisible();
+      }else await expect(card).toContainText('Publishing: waiting for finalized inclusion');
+      const calls=await w.evaluate(()=>(globalThis as any).forumFixture.calls);const attempts=calls.filter((r:any)=>r.operation==='public-publish');
+      expect(attempts).toHaveLength(1);expect(attempts[0].body.approve_optional_badge_failure).toBe(true);
+      expect(calls.some((r:any)=>['public-prepare','public-attach-followers','public-finish','public-ticket-prepare','public-ticket-arm','public-ticket-status'].includes(r.operation))).toBe(false);
+      const saved=await w.evaluate(()=>(globalThis as any).forumFixture.entries[0]);expect(saved.bundle_hash).toBe('0x'+'55'.repeat(32));
+      if(scenario==='expired-no-ticket')expect(saved.last_attempt).toBeNull();
+    }
   }finally{await c.close();await rm(profile,{recursive:true,force:true});}
 });

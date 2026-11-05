@@ -7,7 +7,7 @@ import { validTicketOffer, validTicketPending, validArmedPurchase, validTicketAn
 import { validRefundState, validRefundResult } from './publicRefunds';
 import { validArchive, validArchiveCapabilities, validArchiveExport, validArchiveRestore, validArchiveStatus } from './publicContentArchive';
 export const PUBLIC_PORT = 'nockapp-permissionless-discussion';
-export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-8';
+export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-9';
 const NATIVE = 'nockapp-zkid-public-post-native-v1';
 const integer = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
 const hex = (v: unknown, size = 64): v is string => typeof v === 'string' && new RegExp(`^[0-9a-f]{${size}}$`).test(v) && !/^0+$/.test(v);
@@ -23,7 +23,8 @@ export type PublicReference = { protocol: 4 | 5; chain_id: 84532; contract: stri
 export type PublicCore = { profile: 'nockapp-post-core-v5'; context: PublicScope & { submission_id: string }; post: PublicPost;
   thread: PublicReference | null; references: PublicReference[]; selection: PublicSelection };
 export type PublicSubmission = { core: PublicCore; phase: string; bundle_hash: string | null; last_known: null | { state: string; post_number: string | null; checked_at: number };
-  verification_current: boolean; last_attempt: null | { requested_at: number; transaction_hash?: string } };
+  verification_current: boolean; last_attempt: null | { requested_at: number; transaction_hash?: string };
+  follower_window?: 'not-selected' | 'not-attached' | 'legacy' | 'usable' | 'closing' | 'expired' | 'not-yet-valid' | 'unclassified' };
 export type PublicRow = { post_number: string; state: string; canonical_indexed: boolean; proofs_verified: boolean;
   bundle_hash?: string; indexed_at?: number; post?: PublicPost; thread?: PublicReference | null; references?: PublicReference[];
   relationship_state?: string; display?: { address: string | null; followers: null | { threshold: number; qualified_when_indexed: true; indexed_at: number; credential_profile: string }; history: PublicReference[] | null } };
@@ -114,7 +115,9 @@ export function validPublicBody(op: string, b: Record<string, unknown>): boolean
     && b.approve_publication === true && b.approve_public_payer === true;
   if (op === 'public-direct-public-ready') return exact(b, ['bundle_hash','approve_publication','approve_public_payer']) && hash(b.bundle_hash)
     && b.approve_publication === true && b.approve_public_payer === true;
-  if (['public-finish', 'public-publish'].includes(op)) return exact(b, ['post_id', 'approve_publication']) && uuid(b.post_id) && b.approve_publication === true;
+  if (['public-finish', 'public-publish'].includes(op)) return (exact(b, ['post_id', 'approve_publication'])
+    || op === 'public-publish' && exact(b, ['post_id', 'approve_publication', 'approve_optional_badge_failure'])
+    && b.approve_optional_badge_failure === true) && uuid(b.post_id) && b.approve_publication === true;
   if (op === 'public-attach-followers') return exact(b, ['post_id', 'approve_follower_disclosure']) && uuid(b.post_id) && b.approve_follower_disclosure === true;
   if (op === 'public-attach-history') return exact(b, ['post_id', 'records', 'approve_linking']) && uuid(b.post_id) && b.approve_linking === true
     && Array.isArray(b.records) && b.records.length >= 1 && b.records.length <= 15 && b.records.every(r => validPublicReference(r, true))
@@ -130,7 +133,8 @@ export function validPublicBody(op: string, b: Record<string, unknown>): boolean
   return false;
 }
 export function validPublicSubmission(v: unknown): v is PublicSubmission {
-  if (!object(v) || !exact(v, ['core', 'phase', 'bundle_hash', 'last_known', 'verification_current', 'last_attempt']) || !validPublicCore(v.core)
+  if (!object(v) || !exact(v, ['core', 'phase', 'bundle_hash', 'last_known', 'verification_current', 'last_attempt', ...('follower_window' in v ? ['follower_window'] : [])]) || !validPublicCore(v.core)
+    || 'follower_window' in v && !['not-selected','not-attached','legacy','usable','closing','expired','not-yet-valid','unclassified'].includes(String(v.follower_window))
     || !['prepared', 'proofs-needed', 'wallet-needed', 'bundle-saved', 'submitted'].includes(String(v.phase))
     || !(v.bundle_hash === null || hash(v.bundle_hash)) || typeof v.verification_current !== 'boolean'
     || (['bundle-saved', 'submitted'].includes(String(v.phase))) !== (v.bundle_hash !== null)) return false;
@@ -256,9 +260,9 @@ export function publicProjection(op: string, v: unknown, b: Record<string, unkno
   if (op === 'public-wallet-request') return validPublicWalletShape(v) && v.post_id === b.post_id && v.address === b.address;
   if (['public-wallet-result','public-wallet-finish','public-wallet-recover','public-wallet-reset'].includes(op)) return validPublicSubmission(v) && v.core.post.id === b.post_id
     && (op === 'public-wallet-reset' ? v.bundle_hash === null : v.bundle_hash !== null) && v.verification_current === false;
-  if (op === 'public-capabilities') return exact(v, ['configured', 'protocol', 'scope', 'follower_proof_configured', 'verifier_release', 'anonymous_ticket_packs', 'source_enrollment_configured', 'historical_issuer_views',...([7,9].includes(Number(v.verifier_release))?['refund_payout_configured']:[]),...([8,9].includes(Number(v.verifier_release))?['publication_mode']:[])])
+  if (op === 'public-capabilities') return exact(v, ['configured', 'protocol', 'scope', 'follower_proof_configured', 'verifier_release', 'anonymous_ticket_packs', 'source_enrollment_configured', 'historical_issuer_views',...([7,9,10].includes(Number(v.verifier_release))?['refund_payout_configured']:[]),...([8,9,10].includes(Number(v.verifier_release))?['publication_mode']:[])])
     && v.configured === true && v.protocol === 5 && validPublicScope(v.scope)
-    && (v.verifier_release === 9 ? ['direct','tickets'].includes(String(v.publication_mode)) && v.anonymous_ticket_packs === (v.publication_mode === 'tickets')
+    && ([9,10].includes(v.verifier_release as number) ? ['direct','tickets'].includes(String(v.publication_mode)) && v.anonymous_ticket_packs === (v.publication_mode === 'tickets')
       && v.follower_proof_configured === true && v.source_enrollment_configured === true && v.historical_issuer_views === true
       && typeof v.refund_payout_configured === 'boolean' && (!v.refund_payout_configured || v.publication_mode === 'tickets')
       : v.verifier_release === 8 ? v.publication_mode === 'direct' && v.anonymous_ticket_packs === false
@@ -351,7 +355,11 @@ export function attachPublicDiscussion(ui: chrome.runtime.Port, walletPostId?: s
       if (settled || !connected || !port) return;
       try {
         if (!object(v) || v.profile !== NATIVE || v.id !== id || v.laboratory !== true || v.verified !== false || !bounded(v, 131072)) return done(undefined, 'unsupported-helper');
-        if (v.status === 'rejected' && exact(v, ['profile', 'id', 'status', 'code', 'recoverable', 'laboratory', 'verified']) && v.code === 'native-operation-unavailable' && v.recoverable === true) return done(undefined, 'recovery-needed');
+        if (v.status === 'rejected' && exact(v, ['profile', 'id', 'status', 'code', 'recoverable', 'laboratory', 'verified']) && v.recoverable === true) {
+          if (v.code === 'native-operation-unavailable') return done(undefined, 'recovery-needed');
+          if (m.operation === 'public-publish' && ['publication-follower-window-unavailable','publication-ticket-needed'].includes(String(v.code)))
+            return done(undefined, String(v.code));
+        }
         if (v.status !== 'ok' || !exact(v, ['profile', 'id', 'status', 'result', 'laboratory', 'verified']) || !publicProjection(String(m.operation), v.result, m.body as Record<string, unknown>)) return done(undefined, 'unsupported-helper');
         if (discovery) admittedPublicHost = host;
         done(structuredClone(v.result));
@@ -403,6 +411,8 @@ export function publicOperation<T = unknown>(operation: PublicOperation, supplie
             'helper-busy': 'Another action is still running. Wait for it to finish.',
             'helper-unavailable': 'The installed app is unavailable. Reopen this view. ' + saved,
             'recovery-needed': 'The action could not be confirmed. ' + saved,
+            'publication-follower-window-unavailable': 'The saved follower proof has run out of time. Your exact comment and ticket assignment are preserved.',
+            'publication-ticket-needed': 'No ticket is available for this comment. Buy or recover tickets; do not repeat an existing payment.',
             'unsupported-helper': 'The installed app returned an unsupported response. ' + saved,
           };
           if (Object.hasOwn(messages, v.error)) return done(undefined, messages[v.error],v.error);

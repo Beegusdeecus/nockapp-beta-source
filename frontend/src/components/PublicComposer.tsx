@@ -3,8 +3,9 @@ import { clearDraftIfUnchanged, readDraft, writeDraft, type Draft } from '../dat
 import { acknowledgePublicIntent, publicIntents } from '../data/publicIntents';
 import type { PublicSelection } from '../publicDiscussion';
 
-export function PublicComposer({ draftKey, reply, direct = false, onSubmit }: { draftKey: string; reply: boolean; direct?: boolean;
-  onSubmit: (draft: Draft, selection: PublicSelection) => Promise<string> }) {
+export function PublicComposer({ draftKey, reply, direct = false, availableTickets, onNeedTickets, onSubmit }: { draftKey: string; reply: boolean; direct?: boolean;
+  availableTickets?: number; onNeedTickets?: () => void;
+  onSubmit: (draft: Draft, selection: PublicSelection) => Promise<string | null> }) {
   const [draft, setDraft] = useState<Draft>({ title: '', body: '', credentials: [] });
   const [ready, setReady] = useState(false);const [busy, setBusy] = useState(false);const [error, setError] = useState('');
   const [address, setAddress] = useState(false);const [followers, setFollowers] = useState(false);const [threshold, setThreshold] = useState('10000');
@@ -19,12 +20,14 @@ export function PublicComposer({ draftKey, reply, direct = false, onSubmit }: { 
   function update(value: Draft) { setDraft(value);void writeDraft(draftKey, value).catch(() => setError('Draft save failed. Keep this panel open.')); }
   return <form className="composer" aria-label={reply ? 'Write a public comment' : 'Create public thread'} onSubmit={e => {
     e.preventDefault();if (!ready || busy) return;
+    if (!direct && availableTickets === 0) { onNeedTickets?.();return; }
     void (async () => {
       setBusy(true);setError('');
       try {
         if (followers && (!/^(0|[1-9][0-9]*)$/.test(threshold) || !Number.isSafeInteger(Number(threshold)) || Number(threshold) >= Number.MAX_SAFE_INTEGER))
           throw new Error('Enter a whole-number threshold from 0 to 9007199254740990. Equality does not satisfy greater than.');
         const id = await onSubmit(draft, { address, followers_threshold: followers ? Number(threshold) : null });
+        if(id===null)return; // Parent displays submission errors; keep the draft.
         if (await clearDraftIfUnchanged(draftKey, draft)) {
           await acknowledgePublicIntent(id, true);setDraft({ title: '', body: '', credentials: [] });setAddress(false);setFollowers(false);
         }
@@ -44,6 +47,7 @@ export function PublicComposer({ draftKey, reply, direct = false, onSubmit }: { 
     </details>
     <p>{direct ? 'Save first, then export and upload the public bundle before paying gas. Direct payment exposes your wallet address and can link these posts.' : 'Publication spends a prepaid ticket.'} Text and public proofs may become downloadable before indexing, including if submission fails.</p>
     {error && <p role="alert">{error}</p>}
-    <button className="primary" disabled={!ready || busy}>{busy ? 'Saving public post…' : direct ? 'Save exact public post' : reply ? 'Publish anonymous public comment' : 'Publish anonymous public thread'}</button>
+    {!direct && availableTickets === 0 && <p role="status">No publication tickets available. Your comment stays a draft until tickets are ready.</p>}
+    <button className="primary" disabled={!ready || busy || !direct && availableTickets === 0 && !onNeedTickets}>{busy ? 'Preparing publication…' : !direct && availableTickets === 0 ? 'Buy or recover tickets' : direct ? 'Save exact public post' : reply ? 'Publish anonymous public comment' : 'Publish anonymous public thread'}</button>
   </form>;
 }

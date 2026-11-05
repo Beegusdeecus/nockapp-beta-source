@@ -107,7 +107,7 @@ test('public candidate publishes ordinary authored text with separate default-of
   await expect(panel.getByRole('status')).toContainText('Public post No.2 independently checked');
   const sent = await requests(worker);expect(sent.filter(r => r.operation === 'public-publish')).toHaveLength(1);
   expect(sent.find(r => r.operation === 'public-prepare')?.body.selection).toEqual({ address: false, followers_threshold: null });
-  expect(sent.some(r => r.operation === 'public-ticket-status')).toBe(false);
+  expect(sent.filter(r => r.operation === 'public-ticket-status')).toHaveLength(1);
   await expect(panel.getByLabel('Opening comment', { exact: true })).toHaveValue('');
   const saved = await worker.evaluate(async () => (await chrome.storage.local.get('nockapp:public:submission-intents:v5'))['nockapp:public:submission-intents:v5'] as { acknowledged: boolean; released: boolean }[]);
   expect(saved).toHaveLength(1);expect(saved[0].acknowledged).toBe(true);expect(saved[0].released).toBe(true);
