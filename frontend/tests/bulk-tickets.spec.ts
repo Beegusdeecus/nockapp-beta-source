@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import { validBulkPurchase, validateBulkPurchase, requireAtomicWallet, sendBulkPurchase, type BulkPurchase } from '../src/bulkTickets';
 import { validateTicketOffer, ticketDigest } from '../src/publicTickets';
 import { validPublicBody, publicProjection } from '../src/publicDiscussion';
+import { storage } from '../src/platform/storage';
+const originalStorage={...storage};
+test.beforeEach(()=>{const data=new Map<string,unknown>();storage.get=async<T>(key:string)=>data.get(key) as T;storage.set=async(key,value)=>{data.set(key,structuredClone(value));};});
+test.afterEach(()=>Object.assign(storage,originalStorage));
 const f=JSON.parse(readFileSync(new URL('./fixtures/public-tickets-v6-20261101.json',import.meta.url),'utf8'));
 async function sample(seed:number){
   const offer=await validateTicketOffer(f.offer,f.scope);
@@ -51,4 +55,11 @@ test('batch scope, total, private fields and exact native consent are validated'
   expect(publicProjection('public-ticket-bulk-arm',raw,{batch_id:raw.batch_id,payer:raw.payer})).toBe(true);
   expect(publicProjection('public-ticket-bulk-status',raw)).toBe(false);
   expect(publicProjection('public-ticket-bulk-arm',{...raw,dispatch_authorized:false},{batch_id:raw.batch_id,payer:raw.payer})).toBe(false);
+});
+
+test('concurrent dispatch callers cannot send the same batch twice after asynchronous wallet checks',async()=>{
+  const {offer,raw}=await sample(400);const a=await validateBulkPurchase(raw,offer),b=await validateBulkPurchase(raw,offer);const p=provider(f.rpc.payer);
+  const results=await Promise.allSettled([sendBulkPurchase(a!,p),sendBulkPurchase(b!,p)]);
+  expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+  expect(p.calls.filter(c=>c.method==='wallet_sendCalls')).toHaveLength(1);
 });

@@ -2,6 +2,7 @@ import { exact, object } from './zkidWire';
 import { baseWalletProvider } from './authoredWallet';
 import { ticketDigest, walletCall, type TicketOffer } from './publicTickets';
 import type { WalletProvider } from './publicWallet';
+import { saveWalletTracking } from './data/ticketWalletTracking';
 
 const address=(v:unknown):v is string=>typeof v==='string'&&/^0x[0-9a-f]{40}$/.test(v)&&!/^0x0+$/.test(v);
 const hash=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
@@ -51,7 +52,14 @@ export async function sendBulkPurchase(armed:BulkPurchase,p?:WalletProvider):Pro
   const provider=p??await baseWalletProvider();
   const [accounts,chain]=await Promise.all([walletCall(provider,'eth_accounts'),walletCall(provider,'eth_chainId')]);
   if(!Array.isArray(accounts)||typeof accounts[0]!=='string'||accounts[0].toLowerCase()!==armed.payer||chain!=='0x14a34')throw Error('Wallet account or network changed. Keep the saved purchase.');
-  await requireAtomicWallet(armed.payer,provider);dispatched.add(armed.batch_id);
+  await requireAtomicWallet(armed.payer,provider);
+  // Recheck after asynchronous wallet admission: two callers can arrive
+  // before the first one has completed those reads. Claim synchronously.
+  if(dispatched.has(armed.batch_id))throw Error('This saved payment may already have been requested. Check its status; do not pay again.');
+  dispatched.add(armed.batch_id);
   // No sequential fallback, sendTransaction loop, retry or account upgrade.
-  await walletCall(provider,'wallet_sendCalls',[{version:'2.0.0',chainId:'0x14a34',from:armed.payer,atomicRequired:true,calls:armed.calls}]);
+  let result:unknown;
+  try{result=await walletCall(provider,'wallet_sendCalls',[{version:'2.0.0',chainId:'0x14a34',from:armed.payer,atomicRequired:true,calls:armed.calls}]);}
+  catch(error){try{await saveWalletTracking(armed.batch_id,undefined,error);}catch{/* Native one-shot state remains authoritative. */}throw error;}
+  try{await saveWalletTracking(armed.batch_id,result);}catch{throw Error('The wallet replied, but its tracking ID could not be saved. Independent onchain checks continue; do not pay again.');}
 }

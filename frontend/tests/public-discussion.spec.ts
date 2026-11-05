@@ -13,7 +13,7 @@ test('public UI errors distinguish a read from an uncertain mutation without ech
   }) } } });
   try {
     await expect(publicOperation('public-page', { after: 0, limit: 4 })).rejects.toThrow('Your saved data is safe');
-    await expect(publicOperation('public-source-recover', { approve_source_check: true })).rejects.toThrow('Check the saved operation');
+    await expect(publicOperation('public-source-recover', { approve_source_check: true })).rejects.toThrow('Continue the saved verification');
     error = 'PRIVATE-ARBITRARY-NATIVE-TEXT';
     await expect(publicOperation('public-page', { after: 0, limit: 4 })).rejects.toThrow('Public operation unavailable');
     expect(sends).toBe(3);

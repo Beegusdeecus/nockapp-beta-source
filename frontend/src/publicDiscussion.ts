@@ -429,10 +429,15 @@ function rawPublicOperation<T = unknown>(operation: PublicOperation, supplied: R
           const saved = ['public-capabilities','public-page','public-numbers','public-outbox','public-identity-options','public-source-status','public-source-finality','public-ticket-status'].includes(operation)
             ? 'Your saved data is safe. Try again when the service is available.'
             : 'Check the saved operation before trying again; do not repeat a payment.';
+          const recovery=operation.startsWith('public-source-')?'Twitter verification could not be confirmed. Continue the saved verification; do not start another.':
+            operation==='public-check'?'Publication status could not be checked. The saved comment and ticket assignment are preserved.':
+            operation==='public-publish'?'Publication could not be confirmed. Checking the same saved comment is safe; do not publish it again.':
+            operation.startsWith('public-ticket-')?'The ticket operation could not be confirmed. The saved purchase is preserved; do not pay again.':
+            'The action could not be confirmed. '+saved;
           const messages: Record<string, string> = {
             'helper-busy': 'Another action is still running. Wait for it to finish.',
             'helper-unavailable': 'The installed app is unavailable. Reopen this view. ' + saved,
-            'recovery-needed': 'The action could not be confirmed. ' + saved,
+            'recovery-needed': recovery,
             'publication-follower-window-unavailable': 'The saved follower proof has run out of time. Your exact comment and ticket assignment are preserved.',
             'publication-ticket-needed': 'No ticket is available for this comment. Buy or recover tickets; do not repeat an existing payment.',
             'unsupported-helper': 'The installed app returned an unsupported response. ' + saved,

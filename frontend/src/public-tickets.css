@@ -18,3 +18,21 @@
 .ticket-advanced { margin-block: 28px; border-top: 1px solid currentColor; padding-top: 16px; }
 .ticket-advanced summary { cursor: pointer; }
 .ticket-wallet [role="alert"] { padding: 12px; border-left: 3px solid currentColor; }
+
+/* Match the canonical forum rather than the retired green prototype. */
+body:has(.ticket-wallet) { background:#18191b; }
+.ticket-wallet {
+  --bg:#18191b; --text:#dedee2; --bright:#ededf0; --muted:#aaaab2;
+  --subtle:#aaaab2; --line:#3b3c42; --line-strong:#73747d; --accent:#d2d2d9;
+  background:var(--bg); color:var(--text); font:15px/1.6 Arial,Helvetica,sans-serif;
+}
+.ticket-wallet h1 { font:650 27px/1.3 Arial,Helvetica,sans-serif; letter-spacing:normal; }
+.ticket-wallet p + p { margin-top:10px; }
+.ticket-wallet .ticket-price { background:#222326; border:1px solid var(--line); border-radius:3px; }
+.ticket-wallet input:not([type=checkbox]),.ticket-wallet select { padding:10px; background:#202124; border:1px solid var(--line-strong); color:var(--text); }
+.ticket-wallet button { padding:9px 12px; border:1px solid var(--line-strong); border-radius:3px; min-height:40px; }
+.ticket-wallet button.primary { background:var(--accent); color:#202124; font-weight:650; }
+.ticket-wallet .ticket-progress progress { accent-color:var(--accent); }
+.ticket-wallet .ticket-wallet-status { padding:12px; background:#222326; border-left:3px solid var(--accent); }
+.ticket-wallet ::selection { background:#55565f; color:var(--bright); }
+@media(max-width:420px){.ticket-wallet { padding:20px 14px; }.ticket-progress ol { gap:6px; font-size:12px; }}

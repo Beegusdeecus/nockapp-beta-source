@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { connectBaseWallet } from '../authoredWallet';
 import { publicOperation, type TicketPaymentProgress } from '../publicDiscussion';
+import { walletFailure, walletTrackingStatus } from '../data/ticketWalletTracking';
+import { baseWalletProvider } from '../authoredWallet';
 import { observeTicketFinality } from '../data/ticketFinalityProgress';
 import { formatEth, type TicketOffer } from '../publicTickets';
 import { requireAtomicWallet, sendBulkPurchase, validateBulkPurchase, type BulkPurchase } from '../bulkTickets';
@@ -8,6 +10,7 @@ import { requireAtomicWallet, sendBulkPurchase, validateBulkPurchase, type BulkP
 export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,includePreparedPack=false}:{offer:TicketOffer;onRefresh:()=>void;onActive:(active:boolean)=>void;canRefund?:boolean;includePreparedPack?:boolean}){
   const [saved,setSaved]=useState<BulkPurchase>();const [loaded,setLoaded]=useState(false);const [consent,setConsent]=useState(false);
   const [reviewed,setReviewed]=useState<{batch:string;payer:string}>();const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  const [walletStatus,setWalletStatus]=useState('');const trackingBusy=useRef(false);
   const [finalityPercent,setFinalityPercent]=useState<number>();
   const [status,setStatus]=useState('Checking your saved purchase…');const [chain,setChain]=useState<TicketPaymentProgress>();
   const locked=useRef(false);const mounted=useRef(true);const completed=useRef(false);const [retry,setRetry]=useState(0);
@@ -22,7 +25,7 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
   }
   async function run(work:()=>Promise<void>){
     if(locked.current)return;locked.current=true;setBusy(true);setError('');
-    try{await work();return true;}catch(e){if(mounted.current)setError(e instanceof Error?e.message:'The saved purchase is preserved. Check its status; do not pay again.');return false;}
+    try{await work();return true;}catch(e){if(mounted.current){setStatus('The action could not finish. Your saved purchase is preserved.');setError(e instanceof Error?e.message:'The saved purchase is preserved. Check its status; do not pay again.');}return false;}
     finally{locked.current=false;if(mounted.current)setBusy(false);}
   }
   useEffect(()=>{mounted.current=true;void run(async()=>{await accept(await publicOperation('public-ticket-bulk-status'));});return()=>{mounted.current=false;};},[]);
@@ -43,10 +46,11 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
     try{
       armed=await accept(await publicOperation('public-ticket-bulk-arm',{batch_id:saved.batch_id,payer:reviewed.payer,approve_payment:true}));
       if(!armed)throw Error('The saved payment could not be confirmed.');
-      try{await sendBulkPurchase(armed);}catch{throw Error('The wallet reply was not confirmed. Checking this saved payment; do not pay again.');}
+      try{await sendBulkPurchase(armed);}catch(error){setWalletStatus(walletFailure(error));}
     }finally{
       // Even a rejected/lost wallet reply cannot authorize another dispatch.
-      await accept(await publicOperation('public-ticket-bulk-status'));setRetry(v=>v+1);
+      try{await accept(await publicOperation('public-ticket-bulk-status'));}
+      finally{setRetry(v=>v+1);}
     }
   }
   useEffect(()=>{
@@ -56,6 +60,9 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
       const current=latest.current;if(!alive||!current||!['armed','importing'].includes(current.phase))return;
       if(locked.current){timer=setTimeout(()=>void check(),100);return;}
       if(document.visibilityState==='hidden'){timer=setTimeout(()=>void check(),30000);return;}
+      if(current.phase==='armed'&&!trackingBusy.current){
+        trackingBusy.current=true;void walletTrackingStatus(current.batch_id,baseWalletProvider).then(message=>{if(alive)setWalletStatus(message);}).finally(()=>{trackingBusy.current=false;});
+      }
       const ok=await run(async()=>{
         if(current.phase==='armed'){
           setStatus('Checking the saved payment onchain. No payment will be repeated.');
@@ -92,6 +99,7 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
         <p>Latest block {chain.latest_block.toLocaleString()} · Finalized block {chain.finalized_block.toLocaleString()}. The target is your payment block, not the latest block. Checks update automatically every 30 seconds while this page is visible. Finality advances in batches; percentages are not a time estimate.</p>
       </>}
     </section>
+    {saved?.phase==='armed'&&chain?.state!=='finalized'&&walletStatus&&<p className="ticket-wallet-status">{walletStatus}</p>}
     {error&&<p role="alert">{error}</p>}
     {includePreparedPack&&<p>Your saved two-ticket pack is included in these 50 tickets. Its recovery data is preserved; there is no separate two-ticket payment.</p>}
     {loaded&&(!saved||saved.phase==='prepared')&&<>

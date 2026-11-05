@@ -42,7 +42,7 @@ export function CanonicalForum(){
         setStatus(raw?'Finding the thread and checking its posts…':'Loading posts and checking their proofs…');
         if(raw){await readThread(canonicalNumber(raw),control.signal,value=>{if(live){setThread(value);setStatus(value.complete?'':`Checking public posts: ${value.checked.toLocaleString()} of ${value.total.toLocaleString()}…`);}});}
         else {const p=await publicOperation<PublicPage>('public-page',{after,limit:4},control.signal);if(live){setPage(p);setStatus('');}}
-      }catch(e){if(live){setPage(undefined);setThread(undefined);setError(e instanceof Error?e.message:'Posts could not be loaded.');setUpdateRequired(e instanceof PublicOperationError&&e.code==='extension-update-required');}}
+      }catch(e){if(live){setError((e instanceof Error?e.message:'Posts could not be loaded.')+' Previously checked posts remain visible; this refresh did not complete.');setUpdateRequired(e instanceof PublicOperationError&&e.code==='extension-update-required');}}
       finally{if(live)setBusy(false);}
     })();return()=>{live=false;control.abort();};
   },[after,refresh,raw,composing]);

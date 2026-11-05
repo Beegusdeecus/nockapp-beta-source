@@ -78,13 +78,13 @@ async function fixture(w:Worker,missingRoot=false,recovery=''){
     }) as unknown as typeof chrome.runtime.connectNative;
   },{vectors,missingRoot,recovery});
 }
-for(const mode of ['feed-and-thread','missing-root','automatic-check','reply','progressive-thread','unassigned','refresh-keeps-posts'] as const)test(`canonical forum ${mode}`,async()=>{
+for(const mode of ['feed-and-thread','missing-root','automatic-check','reply','progressive-thread','unassigned','refresh-keeps-posts','failed-refresh-keeps-posts'] as const)test(`canonical forum ${mode}`,async()=>{
   const profile=await mkdtemp(resolve(tmpdir(),'nockapp-canonical-'));const path=resolve('dist');
   const c=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,viewport:{width:390,height:844},args:[`--disable-extensions-except=${path}`,`--load-extension=${path}`,'--no-sandbox']});
   try{
     const w=c.serviceWorkers()[0]??await c.waitForEvent('serviceworker');await fixture(w,mode==='missing-root');const base=`chrome-extension://${new URL(w.url()).host}`;const p=await c.newPage();
     if(mode==='automatic-check')await w.evaluate(()=>{(globalThis as any).forumFixture.hold=true;});
-    if(mode==='refresh-keeps-posts')await p.clock.install();
+    if(mode==='refresh-keeps-posts'||mode==='failed-refresh-keeps-posts')await p.clock.install();
     await p.goto(base+'/sidepanel.html');
     if(mode==='automatic-check'){
       await expect(p.getByRole('progressbar',{name:'Loading verified posts'})).toBeVisible();await expect(p.getByRole('region',{name:'Canonical posts'}).locator('article')).toHaveCount(0);
@@ -96,6 +96,13 @@ for(const mode of ['feed-and-thread','missing-root','automatic-check','reply','p
     const initial=await w.evaluate(()=>(globalThis as any).forumFixture.calls);expect(initial.map((r:any)=>r.operation)).toEqual(['public-capabilities','public-page']);
     expect(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     if(mode==='automatic-check')return;
+    if(mode==='failed-refresh-keeps-posts'){
+      await w.evaluate(()=>{(globalThis as any).forumFixture.fail=true;});await p.clock.fastForward(31000);
+      await expect(p.getByRole('alert')).toContainText('Previously checked posts remain visible');
+      await expect(p.getByRole('link',{name:'Open post No.4',exact:true})).toBeVisible();
+      await w.evaluate(()=>{(globalThis as any).forumFixture.fail=false;});await p.getByRole('button',{name:'Retry loading',exact:true}).click();
+      await expect(p.getByRole('alert')).toHaveCount(0);return;
+    }
     if(mode==='refresh-keeps-posts'){
       await w.evaluate(()=>{(globalThis as any).forumFixture.hold=true;});await p.clock.fastForward(31000);
       await expect(p.getByRole('progressbar',{name:'Loading verified posts'})).toBeVisible();await expect(p.getByRole('link',{name:'Open post No.4',exact:true})).toBeVisible();

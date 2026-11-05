@@ -81,3 +81,5 @@ The current composer can attach selected earlier authorship before signing, usin
 Current client release12 can include an unarmed saved two-ticket pack in the50-ticket atomic checkout. See components/browser-included-ticket-client-v5/PARENT.json and evidence/included-ticket-client-v1.json. Owner payment and full beta acceptance remain pending.
 
 Ticket finality display now names the fixed payment-block target and remaining gap, preserves the observed-gap percentage across reloads, and distinguishes missing payment from unfinalized payment. Percentages describe block/step progress, not an estimated wait. This display cache never authorizes a payment, import or retry.
+
+UI recovery audit: new wallet batch replies retain their tracking ID across reloads. Wallet status is diagnostic only; native finalized exact-batch receipt checks still control import and no retry is authorized. Concurrent dispatch is guarded after wallet checks. Transient feed refresh errors retain previously verified content. Existing uncertain payments with missing tracking IDs remain unresolved; full live acceptance is not claimed.

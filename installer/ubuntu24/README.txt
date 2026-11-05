@@ -18,3 +18,5 @@ To prove earlier authorship, open that optional section in the composer, enter s
 Client release12 can include an unarmed saved two-ticket pack in one50-ticket payment, with explicit approval and canonical unpaid checks. It retains all recovery inputs; armed/paid/closed/refund attempts are not repurposed.
 
 Ticket finality targets the payment block rather than the moving latest block. The UI shows remaining blocks and the observed-gap percentage after finding payment. A public display-only checkpoint preserves progress across reloads; missing payment has no invented finality percentage. No payment is retried by this display.
+
+Wallet tracking IDs returned by MetaMask are now retained for new requests and read-only status survives reloads. Wallet reports never authorize payment retries or ticket import. Older requests with lost IDs remain explicitly uncertain. Concurrent dispatch is guarded after asynchronous checks; transient feed refresh errors retain previously verified posts. No private-state migration or backend authority change is included.

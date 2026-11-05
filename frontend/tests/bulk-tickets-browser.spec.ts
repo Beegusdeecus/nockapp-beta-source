@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { canonicalAscii } from '../src/authoredWallet';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/public-tickets-v6-20261101.json',import.meta.url),'utf8'));
-for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsupported','prepared-single','crash-slot-release','older-single','not-seen'])test(`50-ticket browser flow ${mode}`,async()=>{
+for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsupported','prepared-single','crash-slot-release','older-single','not-seen','wallet-pending','wallet-rejected','wallet-status-unavailable'])test(`50-ticket browser flow ${mode}`,async({},testInfo)=>{
   const f=fixture;const calls=Array.from({length:25},(_,i)=>({to:f.offer.manifest.purchase_contract,value:'0x'+BigInt(f.offer.manifest.terms.pack_price_wei).toString(16),data:'0x9c9a1061'+(i+1).toString(16).padStart(64,'0')}));
   if(['prepared-single','crash-slot-release'].includes(mode))calls[0].data=f.prepared.transaction.data;
   const batch_id=createHash('sha256').update(canonicalAscii({parameters:f.offer.parameters,packs:calls.map(c=>'0x'+c.data.slice(-64))})).digest('hex');
@@ -29,7 +29,7 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
           else if(m.operation==='public-ticket-bulk-status')result=state.bulk??{profile:base.profile,phase:'none'};
           else if(m.operation==='public-ticket-bulk-prepare'){state.bulk??=structuredClone(base);result=state.bulk;}
           else if(m.operation==='public-ticket-bulk-arm'){state.single=structuredClone(f.empty);if(state.bulk.phase!=='prepared')throw Error('Duplicate dispatch');state.bulk={...state.bulk,phase:'armed',payer:m.body.payer};result={...state.bulk,dispatch_authorized:true};}
-          else if(m.operation==='public-ticket-bulk-progress')result={profile:'nockapp-ticket-payment-progress-v1',batch_id:base.batch_id,pack_hash:'0x'+base.calls[0].data.slice(-64),state:mode==='not-seen'?'not-seen':state.finalized?'finalized':'confirming',latest_block:120,finalized_block:state.finalized?115:state.finalBlock,payment_block:mode==='not-seen'||state.finalized?null:110};
+          else if(m.operation==='public-ticket-bulk-progress')result={profile:'nockapp-ticket-payment-progress-v1',batch_id:base.batch_id,pack_hash:'0x'+base.calls[0].data.slice(-64),state:['not-seen','wallet-pending','wallet-rejected','wallet-status-unavailable'].includes(mode)?'not-seen':state.finalized?'finalized':'confirming',latest_block:120,finalized_block:state.finalized?115:state.finalBlock,payment_block:mode==='not-seen'||state.finalized?null:110};
           else if(m.operation==='public-ticket-bulk-recover'){
             state.single=structuredClone(f.empty);state.bulk={...state.bulk,phase:state.bulk.imported_tickets>=48?'complete':'importing',imported_tickets:state.bulk.imported_tickets+2,settled_tickets:state.bulk.settled_tickets+2,transaction_hash:f.paid.payment_tx};state.available=state.bulk.imported_tickets;result=state.bulk;
             if(mode==='lost-import'&&!state.lost){state.lost=true;queueMicrotask(()=>listeners.forEach(fn=>fn({profile:m.profile,id:m.id,status:'rejected',code:'native-operation-unavailable',recoverable:true,laboratory:true,verified:false})));return;}
@@ -50,8 +50,11 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
           else if(r.method==='eth_chainId')result='0x14a34';
           else if(r.method==='wallet_getCapabilities')result={'0x14a34':{atomic:{status:mode==='unsupported'?'ready':'supported'}}};
           else if(r.method==='wallet_sendCalls'){
-            if(mode==='lost-wallet'){queueMicrotask(()=>listeners.forEach(fn=>fn({name:m.name,data:{jsonrpc:'2.0',id:r.id,error:{code:-32000,message:'synthetic-lost-reply'}}})));return;}
+            if(mode==='lost-wallet'||mode==='wallet-rejected'){queueMicrotask(()=>listeners.forEach(fn=>fn({name:m.name,data:{jsonrpc:'2.0',id:r.id,error:{code:mode==='wallet-rejected'?4001:-32000,message:'synthetic-private-error-not-for-display'}}})));return;}
             result={id:'0x'+'ab'.repeat(32)};
+          }else if(r.method==='wallet_getCallsStatus'){
+            if(mode==='wallet-status-unavailable'){queueMicrotask(()=>listeners.forEach(fn=>fn({name:m.name,data:{jsonrpc:'2.0',id:r.id,error:{code:-32000,message:'synthetic-unavailable'}}})));return;}
+            result={version:'2.0.0',id:r.params[0],chainId:'0x14a34',atomic:true,status:100};
           }else throw Error('Unexpected bulk wallet operation');
           queueMicrotask(()=>listeners.forEach(fn=>fn({name:m.name,data:{jsonrpc:'2.0',id:r.id,result}})));
         }};
@@ -88,6 +91,16 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
         expect((await worker.evaluate(()=>(globalThis as any).bulkTest.calls)).some((r:any)=>r.operation==='public-ticket-bulk-prepare')).toBe(false);return;
       }
       await page.getByRole('button',{name:'Pay for 50 tickets in MetaMask',exact:true}).click();
+      if(['wallet-pending','wallet-rejected','wallet-status-unavailable'].includes(mode)){
+        const expected=mode==='wallet-rejected'?'MetaMask rejected the payment request':mode==='wallet-pending'?'MetaMask is still processing the payment':'MetaMask payment status is unavailable';
+        await expect(page.getByText(expected,{exact:false})).toBeVisible();
+        await expect(page.getByRole('button',{name:'Pay for 50 tickets in MetaMask',exact:true})).toHaveCount(0);
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        await page.screenshot({path:testInfo.outputPath('payment-status.png'),fullPage:true});
+        await page.reload();await expect(page.getByText(expected,{exact:false})).toBeVisible();
+        expect((await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).some((r:any)=>r.method==='wallet_sendCalls')).toBe(false);
+        expect((await worker.evaluate(()=>(globalThis as any).bulkTest.calls)).filter((r:any)=>r.operation==='public-ticket-bulk-recover')).toHaveLength(0);return;
+      }
       if(mode==='lost-import'){await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'Check saved payment',exact:true}).click();}
     }
     await expect(page.getByRole('status')).toContainText('Purchase complete. 50 tickets imported.');
