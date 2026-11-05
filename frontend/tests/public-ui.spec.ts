@@ -11,19 +11,19 @@ const test = base.extend<{ extension: { panel: Page; worker: Worker } }>({
       args: [`--disable-extensions-except=${path}`, `--load-extension=${path}`, '--no-sandbox'] });
     try {
       const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');const panel = await context.newPage();
-      await panel.goto(`chrome-extension://${new URL(worker.url()).host}/sidepanel.html`);await expect(panel.getByRole('button', { name: 'Explore demo discussion' })).toBeVisible();
+      await panel.goto(`chrome-extension://${new URL(worker.url()).host}/legacy.html`);await expect(panel.getByRole('button', { name: 'Explore demo discussion' })).toBeVisible();
       await use({ panel, worker });
     } finally { await context.close();await rm(profile, { recursive: true, force: true }); }
   },
 });
 // UI/transport fixtures only: these mutations do not synthesize real proofs.
-async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean; emptyIdentity?: boolean; legacy?: boolean; legacyKind?: 'author-v4' | 'domain-v1'; failIdentitySetup?: boolean; badRead?: boolean; direct?: boolean; renewal?: boolean; lostSource?: boolean; failIdentityOptions?: boolean; failOutbox?: boolean; sourceAborted?: boolean; sourceFinality?: boolean } = {}) {
+async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean; emptyIdentity?: boolean; legacy?: boolean; legacyKind?: 'author-v4' | 'domain-v1'; failIdentitySetup?: boolean; badRead?: boolean; direct?: boolean; renewal?: boolean; lostSource?: boolean; failIdentityOptions?: boolean; failOutbox?: boolean; sourceAborted?: boolean; sourceFinality?: boolean; sourcePending?: boolean; sourceSaved?: boolean; failSourceStatus?: boolean; assignedTickets?: boolean; publicationPending?: boolean } = {}) {
   await worker.evaluate(({ vectors, options }) => {
     const get = (op: string) => structuredClone(vectors.vectors.find((v: any) => v.operation === op).result);
     const template = get('public-numbers');const initial = template.posts[0];
     const state = { requests: [] as any[], entries: [] as any[], records: [initial] as any[], lost: !!options.lost,
       failRead: !!options.badRead, identity: !options.emptyIdentity, legacy: !!options.legacy,
-      sourcePending:false,sourceSaved:false,finalityComplete:false,lostSource:!!options.lostSource };
+      sourcePending:!!options.sourcePending||!!options.sourceAborted,sourceSaved:!!options.sourceSaved,finalityComplete:false,publicationFinalized:!options.publicationPending,lostSource:!!options.lostSource };
     if (options.junk) for (let n = 2; n <= 6; n++) state.records.push({ ...Object.fromEntries(Object.entries(initial).filter(([k]) =>
       ['bundle_hash', 'indexed_at', 'block_number', 'block_hash', 'transaction_hash', 'canonical_indexed'].includes(k))),
       post_number: String(n), state: 'content-unavailable', proofs_verified: false });
@@ -41,19 +41,22 @@ async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean
               anonymous_ticket_packs:!options.direct,historical_issuer_views:true,follower_proof_configured:true,
               source_enrollment_configured:true,refund_payout_configured:false});
           }
-          else if(m.operation==='public-source-status')result={profile:'nockapp-public-source-status-v1',credential_record_present:state.sourceSaved,renewal_pending:state.sourcePending};
+          else if(m.operation==='public-source-finality')result={profile:'nockapp-public-source-finality-v1',chain_id:84532,
+            latest_block:120,finalized_block:state.finalityComplete?115:100,latest_revision:8,
+            finalized_revision:state.finalityComplete?8:7,target_block:state.finalityComplete?null:110,pending:!state.finalityComplete};
+          else if(m.operation==='public-source-status'){reject=!!options.failSourceStatus;result={profile:'nockapp-public-source-status-v1',credential_record_present:state.sourceSaved,renewal_pending:state.sourcePending};}
           else if(['public-source-begin','public-source-recover','public-source-check-post','public-source-cancel'].includes(m.operation)) {
             if(m.operation==='public-source-begin')state.sourcePending=true;
             if(m.operation==='public-source-check-post'){state.sourcePending=false;state.sourceSaved=true;}
             if(m.operation==='public-source-cancel')state.sourcePending=false;
             const sourceState=m.operation==='public-source-cancel'?'cancelled':options.sourceAborted?'aborted':state.sourceSaved?options.sourceFinality&&!state.finalityComplete?'activation-pending-finality':'credential-saved':state.sourcePending?'waiting-for-source-post':'empty';
             result={profile:'nockapp-renewal-enrollment-v3',state:sourceState,
-              credential_saved:sourceState==='credential-saved',post_text:state.sourcePending||options.sourceAborted&&m.operation!=='public-source-cancel'?'testing:'+'ab'.repeat(32):null};
+              credential_saved:sourceState==='credential-saved',post_text:['waiting-for-source-post','pending','aborted'].includes(sourceState)?'testing:'+'ab'.repeat(32):null};
             if(m.operation==='public-source-begin'&&state.lostSource){state.lostSource=false;for(const f of lostListeners)f();return;}
           }
           else if (m.operation === 'public-identity-options') { reject = !!options.failIdentityOptions;result = { identity_record_present: state.identity, sources: state.legacy ? [{ source_id: '34'.repeat(32), kind: options.legacyKind ?? 'author-v4', identity_record_present: true, pending_recovery: false }] : [] }; }
           else if (['public-initialize-identity', 'public-adopt-identity'].includes(m.operation)) { reject = !!options.failIdentitySetup;if (!reject) state.identity = true;result = get('public-initialize-identity'); }
-          else if (m.operation === 'public-ticket-status') result = vectors.vectors.filter((v: any) => v.operation === m.operation).at(-1).result;
+          else if (m.operation === 'public-ticket-status') { result = structuredClone(vectors.vectors.filter((v: any) => v.operation === m.operation).at(-1).result);if(options.assignedTickets)Object.assign(result,{available:0,reserved:2,purchase_pending:true}); }
           else if (m.operation === 'public-outbox') { reject = !!options.failOutbox;result = { entries: state.entries.slice(m.body.after, m.body.after + m.body.limit).map(r => ({ ...r, verification_current: false })),
             next_after: m.body.after + m.body.limit < state.entries.length ? m.body.after + m.body.limit : null }; }
           else if (m.operation === 'public-page' || m.operation === 'public-numbers') {
@@ -81,9 +84,9 @@ async function fixture(worker: Worker, options: { lost?: boolean; junk?: boolean
                 if (!existing) { existing = { ...structuredClone(initial), post: result.core.post, thread: result.core.thread,
                   bundle_hash: result.bundle_hash, post_number: String(state.records.length + 1), indexed_at: Math.max(now, result.core.post.created_at) };state.records.push(existing); }
                 result.phase = 'submitted';result.last_attempt = { requested_at: now, transaction_hash: '0x' + '56'.repeat(32) };
-                result.last_known = { state: 'finalized', post_number: existing.post_number, checked_at: now };result.verification_current = true;
+                result.last_known = { state: state.publicationFinalized?'finalized':'not-indexed', post_number: state.publicationFinalized?existing.post_number:null, checked_at: now };result.verification_current = true;
                 if (state.lost) { state.lost = false;for (const f of lostListeners) f();return; }
-              } else if (m.operation === 'public-check') result.verification_current = true;
+              } else if (m.operation === 'public-check') { result.verification_current = true;if(state.publicationFinalized){const found=state.records.find(r=>r.post?.id===result.core.post.id);if(found)result.last_known={state:'finalized',post_number:found.post_number,checked_at:now};} }
             }
           } else reject = true;
           const reply = reject ? { profile: m.profile, id: m.id, status: 'rejected', code: 'native-operation-unavailable', recoverable: true, laboratory: true, verified: false }
@@ -109,13 +112,14 @@ test('public candidate publishes ordinary authored text with separate default-of
   const saved = await worker.evaluate(async () => (await chrome.storage.local.get('nockapp:public:submission-intents:v5'))['nockapp:public:submission-intents:v5'] as { acknowledged: boolean; released: boolean }[]);
   expect(saved).toHaveLength(1);expect(saved[0].acknowledged).toBe(true);expect(saved[0].released).toBe(true);
 });
-test('missing optional follower evidence does not block authored publication or invent a badge', async ({ extension: { panel, worker } }) => {
+test('failed selected follower proof preserves the comment without spending a ticket', async ({ extension: { panel, worker } }) => {
   await fixture(worker);await open(panel);await compose(panel);await panel.getByText('Optional public disclosures', { exact: true }).click();
   await panel.getByLabel('Prove followers greater than a threshold').check();await panel.getByLabel('Follower threshold', { exact: true }).fill('12');
-  await panel.getByRole('button', { name: 'Publish anonymous public thread', exact: true }).click();await expect(panel.getByRole('status')).toContainText('No.2');
-  const sent = await requests(worker);expect(sent.filter(r => r.operation === 'public-attach-followers')).toHaveLength(1);expect(sent.filter(r => r.operation === 'public-publish')).toHaveLength(1);
-  await panel.getByRole('button', { name: 'Refresh current public page' }).click();await expect(panel.getByRole('region', { name: 'Loaded public records' })).toContainText('Exact new public text');
-  await expect(panel.getByText('Test · Followers greater than', { exact: false })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Publish anonymous public thread', exact: true }).click();
+  await expect(panel.getByRole('alert')).toContainText('follower proof could not be prepared');
+  const sent = await requests(worker);expect(sent.filter(r => r.operation === 'public-attach-followers')).toHaveLength(1);
+  expect(sent.filter(r => r.operation === 'public-publish'||r.operation==='public-finish')).toHaveLength(0);
+  await expect(panel.getByLabel('Opening comment', { exact: true })).toHaveValue('Exact new public text');
 });
 test('address choice saves an exact post and waits for authorization without silently publishing it', async ({ extension: { panel, worker } }) => {
   await fixture(worker);await open(panel);await compose(panel);await panel.getByText('Optional public disclosures', { exact: true }).click();await panel.getByLabel('Show my Ethereum address, authorized with MetaMask').check();
@@ -201,7 +205,7 @@ test('existing domain key setup explains the blocked creation path and enables T
   await expect(start).toBeEnabled();
   const sent = await requests(worker);
   expect(sent.filter(r => r.operation === 'public-adopt-identity')).toHaveLength(1);
-  expect(sent.some(r => r.operation === 'public-initialize-identity' || r.operation.startsWith('public-source-'))).toBe(false);
+  expect(sent.some(r => r.operation === 'public-initialize-identity' || r.operation.startsWith('public-source-') && r.operation !== 'public-source-status')).toBe(false);
 });
 
 test('unconfirmed identity creation shows recovery guidance beside its button and does not retry', async ({ extension: { panel, worker } }) => {
@@ -247,7 +251,8 @@ test('optional Twitter setup requires identity and fresh consent and does not en
   await fixture(worker,{direct:true,renewal:true,emptyIdentity:true});await open(panel);
   await panel.getByText('Optional Twitter follower credential',{exact:true}).click();
   await expect(panel.getByRole('button',{name:'Start Twitter verification',exact:true})).toBeDisabled();
-  expect((await requests(worker)).some(r=>r.operation.startsWith('public-source-'))).toBe(false);
+  await expect(panel.getByText('No credential record is saved locally.',{exact:false})).toBeVisible();
+  expect((await requests(worker)).filter(r=>r.operation.startsWith('public-source-')).map(r=>r.operation)).toEqual(['public-source-status']);
   await panel.getByText('Private authorship setup and recovery',{exact:true}).click();
   await panel.getByLabel('I approve creating a private authorship key on this computer').check();
   await panel.getByRole('button',{name:'Create private authorship identity',exact:true}).click();
@@ -278,9 +283,9 @@ test('lost Twitter signup reply requires explicit recovery and never automatical
   await expect(panel.getByRole('button',{name:'Start Twitter verification',exact:true})).toHaveCount(0);
   await expect(panel.getByLabel('Twitter username',{exact:true})).toHaveCount(0);
   await expect(panel.getByLabel('Verification post URL or ID',{exact:true})).toHaveCount(0);
-  await expect(panel.getByText('Recover your saved verification. No username is needed.',{exact:false})).toBeVisible();
+  await expect(panel.getByText('Continue your saved verification. No username is needed.',{exact:false})).toBeVisible();
   expect((await requests(worker)).filter(r=>r.operation==='public-source-begin')).toHaveLength(1);
-  await consent.check();await panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true}).click();
+  await consent.check();await panel.getByRole('button',{name:'Continue verification',exact:true}).click();
   await expect(panel.getByLabel('Exact public verification challenge',{exact:true})).toHaveValue('testing:'+'ab'.repeat(32));
   await expect(panel.getByText('Verification was not confirmed.',{exact:false})).toHaveCount(0);
   const sent=await requests(worker);expect(sent.filter(r=>r.operation==='public-source-begin')).toHaveLength(1);
@@ -291,9 +296,9 @@ test('aborted verification exposes explicit cancellation instead of sending the 
   await fixture(worker,{renewal:true,sourceAborted:true});await open(panel);
   await panel.getByText('Optional Twitter follower credential',{exact:true}).click();
   await panel.getByLabel('I approve checking my Twitter profile and public verification challenge',{exact:true}).check();
-  await panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true}).click();
+  await panel.getByRole('button',{name:'Continue verification',exact:true}).click();
   await expect(panel.getByText('Cancel this saved attempt below, then start again.',{exact:false})).toBeVisible();
-  await expect(panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true})).toHaveCount(0);
+  await expect(panel.getByRole('button',{name:'Continue verification',exact:true})).toHaveCount(0);
   const cancel=panel.getByRole('button',{name:'Cancel saved Twitter verification',exact:true});
   await expect(panel.getByLabel('Verification post URL or ID',{exact:true})).toHaveCount(0);
   await expect(panel.getByLabel('Exact public verification challenge',{exact:true})).toHaveCount(0);
@@ -319,8 +324,14 @@ test('verification progress waits for finality and only completes after explicit
   await expect(panel.getByRole('region',{name:'Twitter verification progress'})).toContainText('not saved yet');
   await expect(panel.getByLabel('Verification post URL or ID',{exact:true})).toHaveCount(0);
   expect((await requests(worker)).filter(r=>r.operation==='public-source-check-post')).toHaveLength(1);
+  const blocks=panel.getByRole('region',{name:'Registry block status'});
+  await expect(blocks).toContainText('10 blocks ahead');
   await worker.evaluate(()=>{(globalThis as any).publicFixture.finalityComplete=true;});
-  await consent.check();await panel.getByRole('button',{name:'Recover saved Twitter verification',exact:true}).click();
+  await blocks.getByRole('button',{name:'Refresh block status',exact:true}).click();
+  await expect(blocks).toContainText('Public registry caught up.');
+  await expect(bar).toHaveAttribute('value','2');
+  expect((await requests(worker)).filter(r=>r.operation==='public-source-recover')).toHaveLength(0);
+  await consent.check();await panel.getByRole('button',{name:'Continue verification',exact:true}).click();
   await expect(bar).toHaveAttribute('value','3');
   await expect(panel.getByRole('region',{name:'Twitter verification progress'})).toContainText('saved on this computer');
   expect((await requests(worker)).filter(r=>r.operation==='public-source-check-post')).toHaveLength(1);
@@ -343,4 +354,62 @@ test('direct mode saves exact default-off authored intent without ticket or publ
   await panel.getByRole('button',{name:'Resume exact public post',exact:true}).click();
   await expect(panel.getByRole('status')).toContainText('Exact public post saved');
   expect((await requests(worker)).some(r=>r.operation==='public-publish')).toBe(false);
+});
+
+
+test('opening Twitter panel checks local presence only and gates continuation on explicit consent',async({extension:{panel,worker}})=>{
+  await fixture(worker,{renewal:true,sourcePending:true,sourceSaved:true});await open(panel);
+  expect((await requests(worker)).some(r=>r.operation.startsWith('public-source-'))).toBe(false);
+  await panel.getByText('Optional Twitter follower credential',{exact:true}).click();
+  await expect(panel.getByText('A credential record is saved locally; this alone does not prove current eligibility.',{exact:false})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Check local follower credential',exact:true})).toHaveCount(0);
+  await expect(panel.getByRole('button',{name:'Start Twitter verification',exact:true})).toHaveCount(0);
+  await expect(panel.getByLabel('Twitter username',{exact:true})).toHaveCount(0);
+  const next=panel.getByRole('button',{name:'Continue verification',exact:true});await expect(next).toBeDisabled();
+  expect((await requests(worker)).filter(r=>r.operation.startsWith('public-source-')).map(r=>r.operation)).toEqual(['public-source-status']);
+  await panel.getByLabel('I approve checking my Twitter profile and public verification challenge',{exact:true}).check();
+  await next.click();await expect(panel.getByRole('status')).toContainText('Follower credential saved');
+  await expect(next).toHaveCount(0);
+  expect((await requests(worker)).filter(r=>r.operation==='public-source-recover')).toHaveLength(1);
+  expect((await requests(worker)).some(r=>r.operation==='public-source-begin')).toBe(false);
+});
+
+test('unavailable local status blocks new signup and offers a local retry',async({extension:{panel,worker}})=>{
+  await fixture(worker,{renewal:true,failSourceStatus:true});await open(panel);
+  await panel.getByText('Optional Twitter follower credential',{exact:true}).click();
+  await expect(panel.getByText('Local status is unavailable.',{exact:false})).toBeVisible();
+  await panel.getByLabel('Twitter username',{exact:true}).fill('synthetic_user');
+  await panel.getByLabel('I approve checking my Twitter profile and public verification challenge',{exact:true}).check();
+  await expect(panel.getByRole('button',{name:'Start Twitter verification',exact:true})).toBeDisabled();
+  await expect(panel.getByRole('button',{name:'Continue verification',exact:true})).toHaveCount(0);
+  await panel.getByRole('button',{name:'Retry local status check',exact:true}).click();
+  await expect.poll(async()=>(await requests(worker)).filter(r=>r.operation==='public-source-status').length).toBe(2);
+  expect((await requests(worker)).some(r=>['public-source-begin','public-source-recover'].includes(r.operation))).toBe(false);
+});
+
+
+test('assigned tickets explain completed posts separately from a new saved purchase',async({extension:{panel,worker}})=>{
+  await fixture(worker,{assignedTickets:true});await open(panel);
+  await panel.getByText('Prepaid publication tickets',{exact:true}).click();
+  await expect(panel.getByText('0 available · 2 assigned to posts',{exact:false})).toBeVisible();
+  await expect(panel.getByText('Assigned tickets include completed posts and unfinished submissions.',{exact:false})).toBeVisible();
+  await expect(panel.getByText('A separate ticket purchase is still saved.',{exact:false})).toBeVisible();
+  expect((await requests(worker)).filter(r=>r.operation.startsWith('public-ticket-')).map(r=>r.operation)).toEqual(['public-ticket-status']);
+});
+
+
+test('submitted publication checks finality automatically without resubmission',async({extension:{panel,worker}})=>{
+  await fixture(worker,{publicationPending:true});await open(panel);await compose(panel);
+  await panel.clock.install();
+  await panel.getByRole('button',{name:'Publish anonymous public thread',exact:true}).click();
+  const box=panel.getByRole('region',{name:'Public submission outbox'});
+  await expect(box).toContainText('waiting for finalized inclusion');
+  await expect(box.getByRole('progressbar')).not.toHaveAttribute('value');
+  await worker.evaluate(()=>{(globalThis as any).publicFixture.publicationFinalized=true;});
+  await panel.clock.fastForward(31000);
+  await expect(box).toContainText('Published as No.2 · independently verified');
+  await expect(box.getByRole('progressbar')).toHaveAttribute('value','1');
+  await expect(box.getByRole('button',{name:'View published post No.2',exact:true})).toBeVisible();
+  const sent=await requests(worker);expect(sent.filter(r=>r.operation==='public-publish')).toHaveLength(1);
+  expect(sent.some(r=>r.operation==='public-check')).toBe(true);
 });

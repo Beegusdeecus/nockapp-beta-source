@@ -34,6 +34,18 @@ test('actual native offer, pending states, payment and refund projections are pu
   }
   const {offer,purchase}=await prepared();expect(Object.isFrozen(offer.manifest.terms)).toBe(true);expect(purchase.pack_hash).toBe(f.prepared.pack_hash);
 });
+test('payment progress is bound to the saved public pack and cannot claim ticket import',()=>{
+  const body={pack_hash:f.prepared.pack_hash};
+  const value={profile:'nockapp-ticket-payment-progress-v1',pack_hash:body.pack_hash,state:'confirming',
+    latest_block:120,finalized_block:100,payment_block:110};
+  expect(validPublicBody('public-ticket-progress',body)).toBe(true);
+  expect(publicProjection('public-ticket-progress',value,body)).toBe(true);
+  expect(publicProjection('public-ticket-progress',{...value,state:'finalized',payment_block:null},body)).toBe(true);
+  for(const change of [{payment_block:100},{payment_block:121},{finalized_block:121},{payment_block:null},
+    {pack_hash:'0x'+'12'.repeat(32)},{tickets_imported:true},{state:'finalized'}])
+    expect(publicProjection('public-ticket-progress',{...value,...change},body)).toBe(false);
+  expect(validPublicBody('public-ticket-progress',{...body,endpoint:'https://other.example'})).toBe(false);
+});
 test('changed shared price, key, scope, currency and native transaction cannot reach payment admission',async()=>{
   for(const change of [(v:any)=>v.manifest.terms.pack_price_wei='1',(v:any)=>v.manifest.terms.profile='nockapp-public-prepaid-offer-v1',
     (v:any)=>v.manifest.terms.ticket_spki='AA==',(v:any)=>v.manifest.purchase_contract='0x'+'12'.repeat(20)]){

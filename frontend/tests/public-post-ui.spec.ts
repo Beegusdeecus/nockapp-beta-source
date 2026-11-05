@@ -50,7 +50,7 @@ test('Connect X opens the new actual extension page and unavailable helper never
     Object.assign(globalThis, { publicNativeCalls: [] });
     chrome.runtime.connectNative = ((host: string) => { (Reflect.get(globalThis, 'publicNativeCalls') as string[]).push(host);throw new Error('synthetic unavailable'); }) as typeof chrome.runtime.connectNative;
   });
-  await page.goto(`chrome-extension://${id}/sidepanel.html`);
+  await page.goto(`chrome-extension://${id}/legacy.html`);
   const opened = context.waitForEvent('page');await page.getByRole('button', { name: 'Connect X', exact: true }).click();
   const ui = await opened;await ui.waitForLoadState();expect(ui.url()).toBe(`chrome-extension://${id}/public-post.html`);
   await expect(ui.getByRole('heading', { name: 'Connect X with a public post' })).toBeVisible();

@@ -24,6 +24,13 @@ for(const release of [7,9])for(const mode of ['resume','lost-reply','wrong-payou
               historical_issuer_views:true};
             else if(m.operation==='public-ticket-offer')result=f.offer;
             else if(m.operation==='public-ticket-pending')result=pending;
+            else if(m.operation==='public-ticket-status')result={profile:'nockapp-protected-ticket-wallet-v1',initialized:true,
+              available:0,reserved:0,purchase_pending:!!pending.purchase,can_purchase:true,can_redeem:true,
+              pack_size:f.offer.manifest.terms.pack_size,pack_price_wei:f.offer.manifest.terms.pack_price_wei,
+              purchase_before:f.offer.manifest.terms.purchase_before,redeem_before:f.offer.manifest.terms.redeem_before,
+              refund_policy:f.offer.manifest.terms.refund_policy,prepaid_custody:true};
+            else if(m.operation==='public-ticket-progress')result={profile:'nockapp-ticket-payment-progress-v1',pack_hash:m.body.pack_hash,
+              state:'finalized',latest_block:120,finalized_block:115,payment_block:null};
             else if(m.operation==='public-ticket-refund-state')result=state;
             else if(m.operation==='public-ticket-refund-request')result=f.refund_request;
             else if(m.operation==='public-ticket-refund-result'){
@@ -56,11 +63,12 @@ for(const release of [7,9])for(const mode of ['resume','lost-reply','wrong-payou
     },f);
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`chrome-extension://${new URL(worker.url()).host}/public-tickets.html`);
+    await page.getByText('Advanced recovery, refunds and payment details',{exact:true}).click();
     await expect(page.getByRole('region',{name:'Refund policy and recovery'})).toBeVisible();
     expect(await page.evaluate(()=>(globalThis as any).refundWalletCalls)).toEqual([]);
     if(mode==='saved-receipt'){
       await expect(page.getByText(/This saved receipt has not been reverified/)).toBeVisible();
-      await expect(page.getByRole('status')).toHaveCount(0);
+      await expect(page.getByRole('status')).not.toContainText('Refund confirmed');
       await page.getByRole('button',{name:/Reverify saved refund/}).click();
     }else{
       if(mode==='lost-reply'){
@@ -68,17 +76,17 @@ for(const release of [7,9])for(const mode of ['resume','lost-reply','wrong-payou
         await page.getByRole('button',{name:'Sign and record unissued-pack cancellation'}).click();
         await expect(page.getByRole('alert')).toBeVisible();
       }
-      await expect(page.getByRole('button',{name:'Recover paid tickets'})).toBeDisabled();
-      await page.getByRole('button',{name:'Resume saved refund without wallet'}).click();
+      await expect(page.getByRole('button',{name:'Get my tickets',exact:true})).toHaveCount(0);
+      await page.getByRole('button',{name:'Continue refund',exact:true}).click();
     }
     if(mode==='wrong-payout'){
       await expect(page.getByRole('alert')).toContainText('does not match');
-      await expect(page.getByRole('status')).toHaveCount(0);
+      await expect(page.getByRole('status')).not.toContainText('Refund confirmed');
       await expect(page.getByText(`Saved pack: ${f.payout.pack_hash}`,{exact:true})).toBeVisible();
     }else{
       await expect(page.getByRole('status')).toContainText('Refund confirmed by the local verifier');
       await expect(page.getByRole('status')).toContainText(f.payout.transaction_hash);
-      await expect(page.getByRole('button',{name:'Prepare this ticket pack'})).toBeVisible();
+      await expect(page.getByRole('button',{name:'Review ticket purchase',exact:true})).toBeVisible();
     }
     const wallet=await page.evaluate(()=>(globalThis as any).refundWalletCalls);
     expect(wallet.filter((m:any)=>m.method==='eth_signTypedData_v4')).toHaveLength(mode==='lost-reply'?1:0);
@@ -90,8 +98,8 @@ for(const release of [7,9])for(const mode of ['resume','lost-reply','wrong-payou
     expect(calls.every((m:any)=>m.operation==='public-capabilities'||m.operation.startsWith('public-ticket-'))).toBe(true);
     for(const m of calls.filter((m:any)=>['public-ticket-refund-status','public-ticket-refund-recover'].includes(m.operation)))expect(m.body).toEqual({pack_hash:f.payout.pack_hash});
     if(mode!=='wrong-payout'){
-      await page.reload();await expect(page.getByText(/This saved receipt has not been reverified/)).toBeVisible();
-      await expect(page.getByRole('status')).toHaveCount(0);
+      await page.reload();await page.getByText('Advanced recovery, refunds and payment details',{exact:true}).click();await expect(page.getByText(/This saved receipt has not been reverified/)).toBeVisible();
+      await expect(page.getByRole('status')).not.toContainText('Refund confirmed');
     }
     expect(errors).toEqual([]);
   }finally{await context.close();await rm(profile,{recursive:true,force:true});}

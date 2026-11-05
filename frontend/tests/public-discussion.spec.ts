@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { publicProjection, validPublicBody, validPublicRow, validPublicSubmission, attachPublicDiscussion, publicOperation, PUBLIC_VERSION, PUBLIC_PORT } from '../src/publicDiscussion';
+import { publicProjection, validPublicBody, validPublicRow, validPublicSubmission, attachPublicDiscussion, publicOperation, PublicOperationError, PUBLIC_VERSION, PUBLIC_PORT } from '../src/publicDiscussion';
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/public-native-contract-v6-20261101.json', import.meta.url), 'utf8'));
 const vector = (op: string) => fixture.vectors.find((v: any) => v.operation === op);
 
@@ -116,7 +116,7 @@ test('disconnect releases global public operation ownership and drops late repli
 });
 // Built background is also checked in background.spec.ts; constant is pinned here.
 test('public port is a distinct protocol, with no reinterpretation of v4 traffic', () => {
-  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-6');
+  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-8');
 });
 
 test('actual cursor-page vectors preserve empty ranges and cannot skip or invent allocations', () => {
@@ -132,4 +132,42 @@ test('actual cursor-page vectors preserve empty ranges and cannot skip or invent
   expect(validPublicBody('public-page', { after: true, limit: 4 })).toBe(false);
   expect(validPublicBody('public-page', { after: -1, limit: 4 })).toBe(false);
   expect(validPublicBody('public-page', { after: 0, limit: 8 })).toBe(false);
+});
+
+
+test('concurrent views wait before native dispatch and closing a queued mutation cancels it', async () => {
+  const natives: {sent:any[];listeners:Set<(v:unknown)=>void>}[]=[];
+  Object.defineProperty(globalThis,'chrome',{configurable:true,value:{runtime:{connectNative:()=>{
+    const n={sent:[] as any[],listeners:new Set<(v:unknown)=>void>()};natives.push(n);
+    return {postMessage:(v:any)=>n.sent.push(v),disconnect:()=>{},onMessage:{addListener:(f:any)=>n.listeners.add(f),removeListener:(f:any)=>n.listeners.delete(f)},onDisconnect:{addListener:()=>{},removeListener:()=>{}}};
+  }}}});
+  const channels: {send:(op:string,body?:Record<string,unknown>)=>void;close:()=>void;replies:any[]}[]=[];
+  const channel=()=>{
+    let message:(v:unknown)=>void=()=>{};let disconnect:()=>void=()=>{};const replies:any[]=[];
+    attachPublicDiscussion({onMessage:{addListener:(f:any)=>message=f},onDisconnect:{addListener:(f:any)=>disconnect=f},postMessage:(v:any)=>replies.push(v)} as any,undefined,true);
+    const c={send:(operation:string,body={})=>message({version:PUBLIC_VERSION,operation,body}),close:()=>disconnect(),replies};channels.push(c);return c;
+  };
+  const reply=(index:number,op:string)=>{const n=natives[index];for(const f of [...n.listeners])f({profile:'nockapp-zkid-public-post-native-v1',id:n.sent[0].id,status:'ok',laboratory:true,verified:false,result:vector(op).result});};
+  try {
+    const first=channel();first.send('public-ticket-status');
+    const cancelled=channel();cancelled.send('public-ticket-prepare',{approve_purchase:true});cancelled.close();
+    const next=channel();next.send('public-ticket-status');expect(natives).toHaveLength(1);expect(next.replies).toEqual([]);
+    reply(0,'public-ticket-status');await Promise.resolve();expect(natives).toHaveLength(2);
+    expect(natives.flatMap(n=>n.sent).map(m=>m.operation)).toEqual(['public-ticket-status','public-ticket-status']);
+    reply(1,'public-ticket-status');expect(next.replies[0].result).toEqual(vector('public-ticket-status').result);
+    expect(cancelled.replies).toEqual([]);
+    const blocking=channel();blocking.send('public-ticket-status');
+    const queued=Array.from({length:9},()=>{const c=channel();c.send('public-ticket-status');return c;});
+    expect(queued.slice(0,8).every(c=>c.replies.length===0)).toBe(true);expect(queued[8].replies).toEqual([{version:PUBLIC_VERSION,error:'helper-busy'}]);
+    expect(natives).toHaveLength(3);
+  } finally {for(const c of channels)c.close();await Promise.resolve();Reflect.deleteProperty(globalThis,'chrome');}
+});
+
+test('a page with an old background gets a specific reload action without retrying its operation', async () => {
+  let listener:(v:unknown)=>void=()=>{};let sends=0;
+  Object.defineProperty(globalThis,'chrome',{configurable:true,value:{runtime:{connect:()=>({onMessage:{addListener:(f:any)=>listener=f},onDisconnect:{addListener:()=>{}},disconnect:()=>{},postMessage:()=>{sends++;listener({version:'nockapp-permissionless-discussion-6',error:'message-schema'});}})}}});
+  try {
+    const error=await publicOperation('public-ticket-recover').catch(e=>e);
+    expect(error).toBeInstanceOf(PublicOperationError);if(!(error instanceof PublicOperationError))throw Error('Expected a typed update error');expect(error.code).toBe('extension-update-required');expect(error.message).toContain('Reload the extension itself');expect(sends).toBe(1);
+  } finally {Reflect.deleteProperty(globalThis,'chrome');}
 });

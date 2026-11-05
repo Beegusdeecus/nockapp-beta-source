@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { canonicalAscii } from '../authoredWallet';
 import { publicOperation, type PublicScope, type PublicSubmission, type PublicRow, type PublicReference, type PublicPage, type PublicSelection } from '../publicDiscussion';
 import { acknowledgePublicIntent, intentBody, preparePublicIntent, publicIntents, samePublicScope, type PublicIntent } from '../data/publicIntents';
-import type { Draft } from '../data/drafts';
+import { readDraft, clearDraftIfUnchanged, type Draft } from '../data/drafts';
 import { parsePostUrl } from '../urls';
 import { getSelection, subscribeSelection, windowKey } from '../platform/selection';
 import { api } from '../platform/browser';
@@ -11,24 +11,34 @@ import { PostBody, PostId } from './PostBody';
 import { downloadPublicBundle, publishDirect, publishPublicBundleHash } from '../publicDirect';
 import { PublicSourceEnrollment } from './PublicSourceEnrollment';
 import { PublicContentArchive } from './PublicContentArchive';
+import { forumURL } from '../canonicalForum';
+import { PublicationProgress } from './PublicationProgress';
 
-type Capabilities = { scope: PublicScope; source_enrollment_configured: boolean; follower_proof_configured: boolean;
+export type Capabilities = { scope: PublicScope; source_enrollment_configured: boolean; follower_proof_configured: boolean;
   anonymous_ticket_packs: boolean; publication_mode?: 'direct' | 'tickets' };
 type Options = { identity_record_present: boolean; sources: { source_id: string; kind: string; identity_record_present: boolean; pending_recovery: boolean }[] };
 type Tickets = { available: number; reserved: number; purchase_pending: boolean; pack_size: number; pack_price_wei: string; can_purchase: boolean; can_redeem: boolean };
 const captureRef = (row: PublicRow, scope: PublicScope): PublicReference => ({ protocol: 5, chain_id: scope.chain_id, contract: scope.contract, number: row.post_number, bundle_hash: row.bundle_hash! });
-export function PublicDiscussion() {
+export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabilities}:{mode?:'legacy'|'editor'|'settings';root?:PublicRow;onPublished?:(number:string)=>void;initialCapabilities?:Capabilities}) {
   const [caps, setCaps] = useState<Capabilities>();const scope = useRef<PublicScope | undefined>(undefined);
   const [options, setOptions] = useState<Options>();const [tickets, setTickets] = useState<Tickets>();
+  const [ticketsOpen,setTicketsOpen]=useState(false);const [ticketInventoryError,setTicketInventoryError]=useState(false);
+  const inventoryChecking=useRef(false);
   const [rows, setRows] = useState<PublicRow[]>([]);const [page, setPage] = useState<PublicPage>();const [stale, setStale] = useState(false);
   const [freshNumbers, setFreshNumbers] = useState<Set<string>>(new Set());
   const threadRef = useRef<PublicRow | undefined>(undefined);
-  const [outbox, setOutbox] = useState<PublicSubmission[]>([]);const [intents, setIntents] = useState<PublicIntent[]>([]);
+  const [outbox, setOutbox] = useState<PublicSubmission[]>([]);const [outboxUnavailable,setOutboxUnavailable]=useState(false);const [intents, setIntents] = useState<PublicIntent[]>([]);
   const [thread, setThread] = useState<PublicRow>();const [creating, setCreating] = useState(false);
   const [input, setInput] = useState('');const [selected, setSelected] = useState('');
   const selectedRef = useRef('');
   const [error, setError] = useState('');const [localError, setLocalError] = useState('');const [notice, setNotice] = useState('');const [busy, setBusy] = useState(true);
   const [loading, setLoading] = useState('Connecting to the installed helper…');
+  const [publicationStage,setPublicationStage]=useState<number>();const [publicationStarted,setPublicationStarted]=useState(0);
+  const [publishedResult,setPublishedResult]=useState<PublicSubmission>();const [publishedBadges,setPublishedBadges]=useState<PublicRow>();
+  const [monitorNotice,setMonitorNotice]=useState('');
+  const checkedPublications=useRef(new Set<string>());const [publicationChecks,setPublicationChecks]=useState<Record<string,'checking'|'checked'|'unavailable'>>({});const [publishedNumber,setPublishedNumber]=useState<string>();
+  const publishedCallback=useRef(onPublished);publishedCallback.current=onPublished;
+  function published(result:PublicSubmission){if(result.last_known?.state==='finalized'&&result.last_known.post_number&&(root?result.core.thread?.bundle_hash===root.bundle_hash:!result.core.thread)){setPublishedNumber(result.last_known.post_number);setPublishedResult(result);setPublicationStage(undefined);publishedCallback.current?.(result.last_known.post_number);}}
   const [history, setHistory] = useState('');const [linkConsent, setLinkConsent] = useState(false);
   const [createConsent, setCreateConsent] = useState(false);const [reuseConsent, setReuseConsent] = useState(false);
   const [identityNotice, setIdentityNotice] = useState('');
@@ -37,6 +47,7 @@ export function PublicDiscussion() {
   const working = useRef(false);const mounted = useRef(true);const generation = useRef(0);
   function acceptScope(v: PublicScope) { if (!scope.current || !samePublicScope(v, scope.current)) throw new Error('The public installation changed. Reopen after reviewing the update.'); }
   async function syncOutbox() {
+    try {
     const entries: PublicSubmission[] = [];let after = 0;
     for (let i = 0; i < 10; i++) {
       const p = await publicOperation<{ entries: PublicSubmission[]; next_after: number | null }>('public-outbox', { after, limit: 4 });
@@ -45,6 +56,8 @@ export function PublicDiscussion() {
     }
     const saved = (await publicIntents()).filter(r => scope.current && samePublicScope(r.scope, scope.current));
     if (mounted.current) { setOutbox(entries);setIntents(saved); }
+      if(mounted.current){setOutboxUnavailable(false);setLocalError(old=>old.replace('Saved public posts are unavailable. Saved data is preserved.','').replace('Publication status could not be restored. Keep this view open; your draft and ticket assignment are preserved.','').trim());}
+    } catch(error) { if(mounted.current)setOutboxUnavailable(true);throw error; }
   }
   async function readPage(after: number, append: boolean) {
     const result = await publicOperation<PublicPage>('public-page', { after, limit: 4 });
@@ -61,6 +74,7 @@ export function PublicDiscussion() {
   }
   async function action(work: () => Promise<void>, reads = false) {
     if (working.current) return;working.current = true;setBusy(true);setError('');
+    setLoading(reads?'Checking finalized public records and proofs…':'Checking this saved operation…');
     try { await work(); } catch (e) { if (mounted.current) { setError(e instanceof Error ? e.message : 'Public operation unavailable. Saved state is preserved.');if (reads) setStale(true); } }
     finally { working.current = false;if (mounted.current) setBusy(false); }
   }
@@ -80,19 +94,21 @@ export function PublicDiscussion() {
     const request = ++generation.current;
     void action(async () => {
       setLoading('Connecting to the installed helper…');
-      const c = await publicOperation<Capabilities>('public-capabilities');if (!mounted.current || request !== generation.current) return;
+      const c = initialCapabilities ?? await publicOperation<Capabilities>('public-capabilities');if (!mounted.current || request !== generation.current) return;
       scope.current = c.scope;setCaps(c);
-      setLoading('Checking your saved identity and posts…');
+      if(root){threadRef.current=root;setThread(root);}else if(mode==='editor')setCreating(true);
+      setLoading('Checking your private authorship setup…');
       // The native bridge serializes requests. Check local state first, so a
       // slow chain/content read cannot hide the identity and recovery controls.
       const [identity, saved] = await Promise.allSettled([
-        publicOperation<Options>('public-identity-options').then(value => { if (mounted.current && request === generation.current) setOptions(value);return value; }), syncOutbox(),
+        publicOperation<Options>('public-identity-options').then(value => { if (mounted.current && request === generation.current) setOptions(value);return value; }), mode==='settings'?Promise.resolve():syncOutbox(),
       ]);
       if (!mounted.current || request !== generation.current) return;
       setLocalError([
         ...(identity.status === 'rejected' ? ['Private authorship setup is unavailable.'] : []),
         ...(saved.status === 'rejected' ? ['Saved public posts are unavailable. Saved data is preserved.'] : []),
       ].join(' '));
+      if(mode!=='legacy')return;
       setLoading('Loading public posts and checking their proofs…');
       try { await readPage(0, false); }
       catch { if (mounted.current) { setStale(true);setError('Public records could not be refreshed. Your saved posts are safe. Use Refresh current public page to try again.'); } }
@@ -104,7 +120,7 @@ export function PublicDiscussion() {
   }, []);
   useEffect(() => {
     let active = true;let received = false;let unsubscribe = () => {};
-    const accept = (url: string) => { if (active) {
+    const accept = (url: string) => { if (active && mode==='legacy') {
       if (selectedRef.current !== url) { threadRef.current = undefined;setThread(undefined);setCreating(false); }
       selectedRef.current = url;setInput(url);setSelected(url);received = true;
     } };
@@ -120,30 +136,43 @@ export function PublicDiscussion() {
   }
   async function continueIntent(intent: PublicIntent) {
     if (!scope.current || !samePublicScope(scope.current, intent.scope)) throw new Error('This saved intent belongs to another public deployment.');
+    try {
+    setPublicationStarted(Math.floor(Date.now()/1000));setPublicationStage(0);
+    setLoading('Saving the exact post and its disclosure choices…');
     const prepared = await publicOperation<PublicSubmission>('public-prepare', intentBody(intent));checkSubmission(prepared, intent);
     await acknowledgePublicIntent(intent.post.id);
     if (intent.selection.followers_threshold !== null && prepared.bundle_hash === null) {
-      // An unavailable optional proof cannot prevent signing otherwise valid text.
-      try { await publicOperation('public-attach-followers', { post_id: intent.post.id, approve_follower_disclosure: true }); } catch { /* Independent reader omits the missing badge. */ }
+      setPublicationStage(1);setLoading('Checking your saved follower credential and preparing its private proof…');
+      try { await publicOperation('public-attach-followers', { post_id: intent.post.id, approve_follower_disclosure: true }); }
+      catch { throw Error('The follower proof could not be prepared. This comment has not been submitted and no publication ticket has been spent. Your exact comment is saved. Check your follower credential before retrying.'); }
     }
     if (intent.selection.address && prepared.bundle_hash === null) {
       setNotice('Post saved. Exact-post wallet authorization is needed before continuing. Open the separate public wallet screen to authorize it.');
-      await syncOutbox();return;
+      await syncOutbox();setPublicationStage(undefined);return;
     }
+    setPublicationStage(1);setLoading('Signing and verifying this exact public post…');
     const finished = await publicOperation<PublicSubmission>('public-finish', { post_id: intent.post.id, approve_publication: true });checkSubmission(finished, intent);
     if (caps?.publication_mode === 'direct') {
       setNotice('Exact public post saved. Export its public bundle, upload it to the configured origin, then explicitly pay Base gas.');
-      await syncOutbox();return;
+      await syncOutbox();setPublicationStage(undefined);return;
     }
+    setPublicationStage(2);setLoading('Uploading your exact comment and submitting it using one ticket. Waiting for the service response…');
     const result = await publicOperation<PublicSubmission>('public-publish', { post_id: intent.post.id, approve_publication: true });checkSubmission(result, intent);
-    setNotice(result.last_known?.state === 'finalized' ? `Public post No.${result.last_known.post_number} independently checked.` : 'Saved exact publication. Check this operation before retrying.');
-    await syncOutbox();
+    setNotice(result.last_known?.state === 'finalized' ? `Public post No.${result.last_known.post_number} independently checked.` : 'Post submitted. The app checks finalized inclusion automatically while this view is open. Do not publish it again.');
+    await syncOutbox();published(result);setPublicationStage(undefined);
+    } catch(error) {
+      // A failed response can follow a completed native write. Read the exact
+      // local outbox before deciding what is unfinished; never resend here.
+      try { await syncOutbox(); } catch { setLocalError('Publication status could not be restored. Keep this view open; your draft and ticket assignment are preserved.'); }
+      setPublicationStage(undefined);throw error;
+    }
   }
   const scopeKey = caps ? `${caps.scope.application}:${caps.scope.contract}` : 'unconfigured';
   const draftKey = thread ? `reply:public-v5:${scopeKey}:${thread.bundle_hash}:root` : `thread:public-v5:${scopeKey}:${selected || 'all'}`;
   async function submit(draft: Draft, selection: PublicSelection) {
     if (!caps || !options || working.current) throw new Error('Wait for the private authorship check. Your draft is preserved.');
     working.current = true;setBusy(true);setError('');
+    setLoading('Saving your exact publication request…');
     try {
       const value: PublicIntent = { scope: caps.scope, draft_key: draftKey,
         post: { kind: thread ? 'comment' : 'thread', id: crypto.randomUUID(), created_at: Math.floor(Date.now() / 1000), title: thread ? null : draft.title.trim(),
@@ -181,8 +210,147 @@ export function PublicDiscussion() {
     setLinkConsent(false);setNotice('Selected authorship proof attached to this exact saved post. Publication remains a separate action.');await syncOutbox();
   }
   const known = thread ? rows.filter(r => r.post?.kind === 'comment' && r.thread?.bundle_hash === thread.bundle_hash) : rows.filter(r => !selected || !r.post || r.post.references.some(ref => ref[0] === selected));
+  const inThisView=(r:PublicSubmission)=>mode==='legacy'||(root?r.core.thread?.bundle_hash===root.bundle_hash:!r.core.thread);
+  const checkKey=(r:PublicSubmission)=>`${r.core.post.id}:${r.bundle_hash}`;
+  const pendingChecks=outbox.filter(r=>inThisView(r)&&!!r.bundle_hash&&r.last_known?.state!=='finalized'&&r.last_known?.state!=='invalid'
+    &&(r.phase==='submitted'||!!r.last_attempt||mode!=='legacy'&&!checkedPublications.current.has(checkKey(r)))).map(r=>r.core.post.id).sort().join(',');
+  useEffect(()=>{
+    if(!pendingChecks)return;
+    let live=true;let checking=false;let cursor=0;const ids=pendingChecks.split(',');const controller=new AbortController();
+    const check=async()=>{
+      if(!live||checking||working.current||document.visibilityState==='hidden')return;checking=true;
+      const id=ids[cursor++%ids.length];const previous=outbox.find(r=>r.core.post.id===id);
+      try{
+        if(!previous)return;
+        setPublicationChecks(old=>({...old,[id]:'checking'}));
+        const result=await publicOperation<PublicSubmission>('public-check',{post_id:id},controller.signal);checkSubmission(result);
+        if(result.bundle_hash!==previous.bundle_hash||canonicalAscii(result.core)!==canonicalAscii(previous.core))throw Error('Publication status did not match the original comment.');
+        if(live){
+          if(result.last_known?.state==='finalized'){
+            // Restore the canonical number without signing, uploading or
+            // calling the publication service again. Preserve newer edits.
+            if(mode!=='legacy'){
+              const intent=(await publicIntents()).find(i=>i.post.id===id);if(intent){
+                checkSubmission(result,intent);const draft=await readDraft(intent.draft_key);
+                if(draft.title.trim()===(intent.post.title??'')&&draft.body.trim()===intent.post.body&&draft.credentials.length===0&&!draft.passportFacts?.length&&!draft.zkidFacts?.length)await clearDraftIfUnchanged(intent.draft_key,draft);
+                if(intent.acknowledged&&!intent.released)await acknowledgePublicIntent(id,true);
+              }
+            }
+            if(live&&!working.current){setNotice(`Published as No.${result.last_known.post_number}. Publication restored automatically.`);if(mode!=='legacy')published(result);}
+          }
+          if(live){checkedPublications.current.add(checkKey(result));setPublicationChecks(old=>({...old,[id]:'checked'}));setOutbox(old=>old.map(r=>r.core.post.id===id&&r.bundle_hash===result.bundle_hash?result:r));setMonitorNotice('');}
+        }
+      }catch{if(live){setPublicationChecks(old=>({...old,[id]:'unavailable'}));setMonitorNotice('Publication status is temporarily unavailable. Checking again automatically; no ticket will be spent again.');}}
+      finally{checking=false;}
+    };
+    const visible=()=>{if(document.visibilityState==='visible')void check();};
+    const timer=setInterval(()=>void check(),30000);document.addEventListener('visibilitychange',visible);void check();
+    return()=>{live=false;clearInterval(timer);document.removeEventListener('visibilitychange',visible);controller.abort();};
+  },[pendingChecks,busy]);
+
+  useEffect(()=>{
+    if(!publishedResult?.last_known?.post_number||publishedResult.core.selection.followers_threshold===null)return;
+    let live=true;const controller=new AbortController();let checking=false;setPublishedBadges(undefined);
+    const check=async()=>{if(checking||document.visibilityState==='hidden')return;checking=true;try{
+      const page=await publicOperation<PublicPage>('public-numbers',{numbers:[Number(publishedResult.last_known!.post_number)]},controller.signal);
+      const row=page.posts[0];if(row?.bundle_hash===publishedResult.bundle_hash&&row.state==='finalized'&&row.proofs_verified&&live)setPublishedBadges(row);
+    }catch{/* Keep the check pending and retry; never claim a missing badge from a failed read. */}finally{checking=false;}};
+    void check();const timer=setInterval(()=>void check(),30000);const visible=()=>{if(document.visibilityState==='visible')void check();};document.addEventListener('visibilitychange',visible);
+    return()=>{live=false;controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
+  },[publishedResult]);
+
+  useEffect(()=>{
+    if(mode==='legacy'||!outboxUnavailable)return;
+    const retry=()=>{if(!working.current&&document.visibilityState==='visible')void syncOutbox().catch(()=>undefined);};
+    const timer=setInterval(retry,30000);document.addEventListener('visibilitychange',retry);
+    return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',retry);};
+  },[mode,outboxUnavailable]);
+
+  useEffect(()=>{
+    if(!ticketsOpen||busy||tickets||ticketInventoryError||inventoryChecking.current)return;
+    inventoryChecking.current=true;
+    void action(async()=>{
+      setLoading('Checking your available publication tickets…');
+      try{setTickets(await publicOperation<Tickets>('public-ticket-status'));}
+      catch{setTicketInventoryError(true);}
+      finally{inventoryChecking.current=false;}
+    });
+  },[ticketsOpen,busy,tickets,ticketInventoryError]);
+  useEffect(()=>{
+    const refresh=()=>{if(ticketsOpen&&document.visibilityState==='visible'){setTicketInventoryError(false);setTickets(undefined);}};
+    window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+    return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[ticketsOpen]);
   const shown = thread ? [thread, ...known.filter(r => r.post_number !== thread.post_number)].sort((a, b) => Number(a.post_number) - Number(b.post_number)) : known;
   const pendingIds = intents.filter(i => !outbox.some(o => o.core.post.id === i.post.id));
+  const unfinished=outbox.filter(row=>row.last_known?.state!=='finalized'&&inThisView(row));
+  const interrupted=pendingIds.filter(i=>root?i.thread?.bundle_hash===root.bundle_hash:!i.thread);
+  if(mode!=='legacy')return <section className="public-discussion forum-workflow" aria-label={mode==='settings'?'Account and storage settings':'Publish a post'}>
+    {(error||localError)&&<p role="alert">{error||localError}</p>}{notice&&<p role="status">{notice}</p>}
+    {busy&&(publicationStage!==undefined?<PublicationProgress stage={publicationStage} message={loading} startedAt={publicationStarted}/>:<section aria-live="polite"><progress aria-label="Publication progress"/><p>{loading}</p></section>)}
+    {caps&&<>
+      {(mode==='settings'||!options?.identity_record_present)&&<div className="forum-identity">      <details><summary>Private authorship setup and recovery</summary>
+        <p>Twitter and MetaMask are optional. Keep a secure copy of your authorship secret: losing every copy loses control. Restoring it does not restore missing credentials or tickets. Shared or stolen keys confer the same authority.</p>
+        {!options ? <p>{busy ? 'Checking private authorship setup…' : 'Private authorship setup is unavailable. Reopen this view to retry. Public reading remains available.'}</p> : options.identity_record_present ? <p>A protected authorship record is present.</p> : <>
+          {options.sources.some(s => s.identity_record_present || s.pending_recovery) ?
+            <p>An existing private key or saved recovery needs your attention. To keep your existing identity, approve reuse and choose its key below. A key with pending recovery must be recovered first.</p> : <>
+              <label><input type="checkbox" checked={createConsent} onChange={e => setCreateConsent(e.target.checked)} />I approve creating a private authorship key on this computer</label>
+              <button disabled={busy || !createConsent} onClick={() => void setupIdentity(() => publicOperation('public-initialize-identity', { approve_private_key_setup: true }))}>Create private authorship identity</button>
+            </>}
+          {!!options?.sources.length && <><label><input type="checkbox" checked={reuseConsent} onChange={e => setReuseConsent(e.target.checked)} />I approve reusing the selected existing private key</label>
+            {options.sources.map((s, i) => <button key={s.source_id} disabled={busy || !reuseConsent || !s.identity_record_present || s.pending_recovery} onClick={() => void setupIdentity(() =>
+              publicOperation('public-adopt-identity', { source_id: s.source_id, approve_key_reuse: true })
+            )}>Reuse existing {s.kind} key {i + 1}</button>)}</>}
+        </>}
+        {identityNotice && <p aria-live="polite">{identityNotice}</p>}
+      </details>
+</div>}
+      {mode==='settings'?<>
+        {caps.source_enrollment_configured&&<PublicSourceEnrollment busy={busy} identityPresent={!!options?.identity_record_present} run={work=>action(work)}/>}
+        <PublicContentArchive scope={caps.scope} disabled={busy}/>
+      </>:<>
+
+        {monitorNotice&&<p role="status">{monitorNotice}</p>}
+        {outboxUnavailable&&<section aria-live="polite"><progress aria-label="Restoring publication records"/><p>Restoring publication status automatically. New publication is paused; your draft and ticket assignment are preserved.</p></section>}
+        {unfinished.map(row=><section className="forum-pending" key={row.core.post.id} aria-label="Unfinished publication">
+          <h3>{row.core.post.kind==='comment'?'Your comment':'Your thread'}</h3>
+          <p>{row.core.thread?.number?`Reply to thread No.${row.core.thread.number}`:'New thread'}{row.core.post.title?` · ${row.core.post.title}`:''}</p>
+          <PostBody body={row.core.post.body} className="post-body" onReference={n=>void api().tabs.create({url:forumURL(n)})}/>
+          {(row.last_attempt||row.phase==='submitted')&&row.last_known?.state!=='invalid'?<PublicationProgress stage={3}
+            startedAt={row.last_attempt?.requested_at??row.core.post.created_at} checkedAt={row.last_known?.checked_at}
+            checking={publicationChecks[row.core.post.id]==='checking'}
+            message={publicationChecks[row.core.post.id]==='unavailable'?'Status temporarily unavailable. Your comment is saved; checking again automatically.':'Publishing: waiting for finalized inclusion. This is checked automatically.'}/>:<p role="status">{row.last_known?.state==='invalid'?'The indexed post failed verification. Its ticket assignment is preserved.':row.bundle_hash&&publicationChecks[row.core.post.id]==='unavailable'?'Status unavailable. Checking again automatically; no new publication is being sent.':row.bundle_hash&&publicationChecks[row.core.post.id]!=='checked'?'Checking whether this exact comment was already published…':row.phase==='wallet-needed'?'Not submitted. This post needs your wallet authorization.':'Not submitted by this app. Review the exact text above before publishing.'}</p>}
+          {row.last_attempt?.transaction_hash&&<a href={`https://sepolia.basescan.org/tx/${row.last_attempt.transaction_hash}`} target="_blank" rel="noopener">View submitted transaction</a>}
+          {row.bundle_hash&&!row.last_attempt&&row.phase!=='submitted'&&row.last_known?.state!=='invalid'&&publicationChecks[row.core.post.id]!=='checked'&&<progress aria-label="Recovering publication status"/>}
+          {row.core.selection.address&&!row.bundle_hash&&<button disabled={busy} onClick={()=>void api().tabs.create({url:api().runtime.getURL(`public-wallet.html#post=${row.core.post.id}`)})}>Authorize this post in MetaMask</button>}
+          {row.phase!=='submitted'&&!row.last_attempt&&row.last_known?.state!=='invalid'&&(!row.bundle_hash||publicationChecks[row.core.post.id]==='checked')&&<button disabled={busy} onClick={()=>void action(async()=>{
+            const intent=intents.find(i=>i.post.id===row.core.post.id);if(intent)await continueIntent(intent);
+            else if(row.bundle_hash){const r=await publicOperation<PublicSubmission>('public-publish',{post_id:row.core.post.id,approve_publication:true});checkSubmission(r);await syncOutbox();published(r);}
+            else throw Error('The original publication request is unavailable. Your draft is preserved.');
+          })}>{row.core.post.kind==='comment'?'Publish this comment':'Publish this thread'}</button>}
+
+          {!row.bundle_hash&&<details><summary>Prove earlier authorship</summary>
+            <label>Earlier post numbers<input value={history} onChange={e=>setHistory(e.target.value)} placeholder="1, 2"/></label>
+            <label><input type="checkbox" checked={linkConsent} onChange={e=>setLinkConsent(e.target.checked)}/>I approve linking these selected posts</label>
+            <button disabled={busy||!linkConsent} onClick={()=>void action(()=>attachHistory(row))}>Attach selected authorship proof</button>
+          </details>}
+        </section>)}
+        {interrupted.map(i=><section className="forum-pending" key={i.post.id} aria-label="Unsubmitted publication">
+          <h3>{i.post.kind==='comment'?'Your unsubmitted comment':'Your unsubmitted thread'}</h3>
+          <p>{i.thread?.number?`Reply to thread No.${i.thread.number}`:'New thread'}{i.post.title?` · ${i.post.title}`:''}</p>
+          <PostBody body={i.post.body} className="post-body" onReference={n=>void api().tabs.create({url:forumURL(n)})}/>
+          <p>No submission was confirmed. This action prepares and publishes only the exact text above.</p>
+          <button disabled={busy||outboxUnavailable} onClick={()=>void action(()=>continueIntent(i))}>{i.post.kind==='comment'?'Publish this comment':'Publish this thread'}</button>
+        </section>)}
+        {options?.identity_record_present&&!busy&&!outboxUnavailable&&!unfinished.length&&!interrupted.length&&<PublicComposer key={draftKey} draftKey={draftKey} reply={!!root} direct={caps.publication_mode==='direct'} onSubmit={submit}/>}
+        {(unfinished.length>0||interrupted.length>0)&&<p>Resolve the publication above before writing another. Your draft is preserved.</p>}
+
+        {publishedNumber&&<section className="forum-success" aria-label="Completed publication"><p>Published as <a href={forumURL(publishedNumber)}>No.{publishedNumber}</a>. Finalized and independently checked.</p>
+          {publishedResult?.core.selection.followers_threshold!==null&&publishedResult&&<p>{!publishedBadges?'Checking the published follower badge…':publishedBadges.display?.followers?`Follower badge verified: followers greater than ${publishedBadges.display.followers.threshold}.`:'Your comment is published, but its follower badge could not be verified. Do not publish again to fix it.'}</p>}
+        </section>}
+      </>}
+    </>}
+  </section>;
   return <section className="public-discussion" aria-label="Public permissionless discussions">
     <h2>Public discussions</h2><p>Base Sepolia test beta · Indexing commits bytes; the local verifier checks their meaning.</p>
     <form className="shared-selected-post" onSubmit={e => { e.preventDefault();try { const value = input.trim() ? parsePostUrl(input).url : '';selectedRef.current = value;setSelected(value);setInput(value);threadRef.current = undefined;setThread(undefined); } catch { setError('Enter an individual X post URL. Your current view is preserved.'); } }}>
@@ -190,7 +358,7 @@ export function PublicDiscussion() {
     </form>
     <p>Reading is free. Source filters cover loaded records only; unavailable records cannot be classified. No complete-history claim is made.</p>
     {(error || localError) && <p role="alert">{[error, localError].filter(Boolean).join(' ')}</p>}{notice && <p role="status">{notice}</p>}
-    {busy && <p aria-live="polite">{loading || 'Working… Keep this view open. Saved actions will not be submitted twice.'}</p>}
+    {busy && <div aria-live="polite"><progress aria-label="Current app action"/><p>{loading || 'Working… Keep this view open. Saved actions will not be submitted twice.'}</p></div>}
     {!caps && !busy && <button onClick={initialize}>Reconnect to installed app</button>}
     {stale && <p>Last loaded content is retained. Its proof badges are hidden until an independent refresh succeeds.</p>}
     {caps && <>
@@ -216,15 +384,18 @@ export function PublicDiscussion() {
         {identityNotice && <p aria-live="polite">{identityNotice}</p>}
       </details>
       {caps.source_enrollment_configured && <PublicSourceEnrollment busy={busy} identityPresent={!!options?.identity_record_present} run={work=>action(work)} />}
-      {caps.anonymous_ticket_packs && <details><summary>Prepaid publication tickets</summary><p>The operator can refuse redemption or lose prepaid funds. Blind tickets do not hide IP addresses, timing or small anonymity sets.</p>
+      {caps.anonymous_ticket_packs && <details onToggle={event=>{if(event.currentTarget.open){setTicketInventoryError(false);setTickets(undefined);}setTicketsOpen(event.currentTarget.open);}}><summary>Prepaid publication tickets</summary><p>The operator can refuse redemption or lose prepaid funds. Blind tickets do not hide IP addresses, timing or small anonymity sets.</p>
         <button disabled={busy} onClick={()=>void api().tabs.create({url:api().runtime.getURL('public-tickets.html')}).catch(()=>setError('Could not open ticket purchases. Saved state is preserved.'))}>Buy or recover tickets</button>
-        <button disabled={busy} onClick={() => void action(async () => setTickets(await publicOperation<Tickets>('public-ticket-status')))}>Check ticket inventory</button>
-        {tickets && <><p>{tickets.available} available · {tickets.reserved} reserved · {tickets.pack_size} tickets per pack · pack price {tickets.pack_price_wei} wei</p>
+        {ticketInventoryError&&<><p>Ticket availability could not be checked. Your saved purchases are preserved.</p><button disabled={busy} onClick={()=>setTicketInventoryError(false)}>Retry ticket availability</button></>}
+        {tickets && <><p>{tickets.available} available · {tickets.reserved} assigned to posts · {tickets.pack_size} tickets per pack · pack price {tickets.pack_price_wei} wei</p>
+          <p>Assigned tickets include completed posts and unfinished submissions. Each stays tied to its original post and cannot pay for a different one.</p>
+          {tickets.purchase_pending&&<p>A separate ticket purchase is still saved. Its new tickets appear here only after payment verification and pack recovery.</p>}
           {tickets.purchase_pending && <button disabled={busy} onClick={() => void action(async () => { await publicOperation('public-ticket-recover');setTickets(await publicOperation<Tickets>('public-ticket-status')); })}>Recover paid ticket pack</button>}
           <p>Purchases and cancellation use the separate ticket wallet screen.</p></>}
       </details>}
       {caps.publication_mode === 'direct' && <p>Direct-payment test: prepaid tickets are not configured. {!caps.source_enrollment_configured && 'Follower enrollment is not configured. '}Gas payment exposes your wallet address and can link posts. The payer is not proof of authorship. Read and author verification still run locally.</p>}
       <section aria-label="Public submission outbox"><h3>Saved public posts</h3>
+        {monitorNotice&&<p role="status">{monitorNotice}</p>}
         {caps.publication_mode === 'direct' && <label><input type="checkbox" checked={payerConsent} onChange={e=>setPayerConsent(e.target.checked)} />I approve revealing the gas payer's address and linking payments. I will approve at most 0.001 Base Sepolia test ETH in total wallet fees.</label>}
         {caps.publication_mode === 'direct' && <details><summary>Pay gas for a public bundle</summary>
           <p>You can pay for someone else's exported post. The helper must download the exact public bytes and verify their authorship and deployment first. Paying does not establish that you authored the post.</p>
@@ -235,7 +406,11 @@ export function PublicDiscussion() {
           })}>Verify public bundle and pay gas</button>
         </details>}
         {outbox.map(row => <article key={row.core.post.id}><h4>{row.core.post.title ?? 'Comment'}</h4><p>{row.core.post.body}</p>
-          <p>{row.phase} · {row.last_known ? `Last known ${row.last_known.state}${row.last_known.post_number ? ` · No.${row.last_known.post_number}` : ''}` : 'Not independently checked'}</p>
+          <p>{row.last_known?.state==='finalized'?`Published as No.${row.last_known.post_number} · independently verified`
+            :row.phase==='submitted'&&row.last_known?.state==='not-indexed'?'Submitted · waiting for finalized inclusion. Checked automatically while this view is open.'
+            :`${row.phase} · ${row.last_known?row.last_known.state:'Not independently checked'}`}</p>
+          {(row.phase==='submitted'||!!row.last_attempt)&&<progress max={1} value={row.last_known?.state==='finalized'?1:undefined} aria-label={`Publication progress: ${row.core.post.title??'Comment'}`}/>}
+          {row.last_known?.state==='finalized'&&row.last_known.post_number&&<button disabled={busy} onClick={()=>void action(()=>reference(row.last_known!.post_number!),true)}>View published post No.{row.last_known.post_number}</button>}
           {row.core.selection.address && !row.bundle_hash && <><p>Exact-post wallet authorization is needed.</p><button disabled={busy} onClick={() => void api().tabs.create({url:api().runtime.getURL(`public-wallet.html#post=${row.core.post.id}`)}).catch(()=>setError('Could not open the public wallet screen. The saved post is preserved.'))}>Authorize saved public post</button></>}
           {row.bundle_hash && <button disabled={busy} onClick={() => void action(async () => { const result = await publicOperation<PublicSubmission>('public-check', { post_id: row.core.post.id });checkSubmission(result);setNotice(`Current check: ${result.last_known?.state}`);await syncOutbox(); })}>Check saved public post</button>}
           {row.bundle_hash && caps.publication_mode === 'direct' && <>

@@ -1,0 +1,71 @@
+/* Neutral dark forum: canonical numbers lead; surfaces separate the content. */
+.canonical-forum {
+  --bg:#18191b; --surface:#222326; --text:#dedee2; --bright:#ededf0;
+  --line:#3b3c42; --control-line:#73747d; --accent:#d2d2d9;
+  --muted:#aaaab2; --subtle:#aaaab2; --line-strong:#55565e;
+  color-scheme:dark; color:var(--text); background:var(--bg); height:100%;
+  overflow-y:auto; padding:0 18px 24px; font:15px/1.6 Arial,Helvetica,sans-serif; overflow-wrap:anywhere;
+}
+.canonical-forum button,.canonical-forum a,.canonical-forum input { font:inherit; }
+.canonical-forum a { color:var(--bright); }
+.canonical-forum a:hover { color:var(--bright); text-decoration:underline; }
+.canonical-forum button { border:1px solid var(--control-line); background:var(--surface); color:var(--text); padding:8px 12px; border-radius:3px; }
+.canonical-forum button:not(:disabled):hover { color:var(--bright); background:#303136; }
+.canonical-forum input { min-width:0; color:var(--text); background:#202124; border:1px solid var(--control-line); border-radius:3px; padding:9px 10px; width:100%; }
+.canonical-forum input::placeholder { color:var(--muted); opacity:1; }
+.canonical-forum h1,.canonical-forum h2 { font-family:Arial,Helvetica,sans-serif; font-weight:650; letter-spacing:normal; }
+.canonical-forum ::selection { background:#55565f; color:var(--bright); }
+.forum-header { display:flex; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid var(--line); }
+.forum-header .forum-brand { color:var(--bright); font-weight:800; font-size:24px; letter-spacing:-1px; }
+.forum-network { font-size:11px; color:var(--muted); flex:1; }
+.forum-header button { padding:5px 9px; }
+.forum-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:18px 0; }
+.forum-toolbar form { display:flex; gap:5px; flex:1; min-width:120px; }
+.forum-toolbar input { width:80px; flex:1; }
+.canonical-forum .forum-primary,.canonical-forum .public-discussion .composer>button.primary { background:var(--accent); border-color:var(--accent); color:#202124; font-weight:650; }
+.canonical-forum .forum-primary:not(:disabled):hover,.canonical-forum .public-discussion .composer>button.primary:not(:disabled):hover { background:#e0e0e5; color:#202124; }
+.forum-title,.forum-thread-heading h1 { font-size:19px; margin:22px 0 12px; }
+.forum-thread-heading p { font-size:13px; }
+.forum-post { margin:0 0 14px; padding:16px; border:1px solid var(--line); border-radius:2px; background:var(--surface); scroll-margin-top:16px; }
+.forum-sidebar .forum-post { margin:0; padding:16px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; }
+.forum-post:target { outline:1px solid #a8a9b2; outline-offset:3px; }
+.forum-post header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:12px; color:var(--muted); margin-bottom:10px; }
+.forum-post header>a { font:600 13px Arial,Helvetica,sans-serif; }
+.forum-kind { margin-left:auto; }
+.forum-post h2 { font-size:18px; line-height:1.4; margin:0 0 10px; }
+.forum-post .post-body,.forum-excerpt { white-space:pre-wrap; margin:0; color:var(--text); }
+.forum-excerpt { display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
+.forum-post .forum-excerpt:hover { color:var(--bright); text-decoration:none; }
+.forum-badges { display:flex; flex-wrap:wrap; gap:6px; }
+.forum-badges:empty { display:none; }
+.forum-badges>span { margin-top:12px; background:#303136; border:1px solid #5a5b64; border-radius:2px; padding:2px 7px; font-size:12px; color:#dedee2; }
+.forum-badges a { margin-left:5px; }
+.forum-unavailable,.forum-muted { color:var(--muted); font-size:13px; }
+.forum-pagination { display:flex; justify-content:space-between; gap:10px; align-items:center; margin:18px 0; font-size:13px; }
+.forum-progress { margin:14px 0; color:var(--text); font-size:13px; }
+.forum-progress progress { width:100%; accent-color:var(--accent); height:7px; }
+.forum-menu { padding:12px; margin-top:12px; background:var(--surface); border:1px solid var(--line); border-radius:3px; }
+.forum-menu>a { display:block; padding:12px 0; font-size:13px; }
+.forum-footer { border-top:1px solid var(--line); margin-top:24px; padding-top:14px; color:var(--muted); font-size:12px; }
+.canonical-forum [role=alert] { background:#2c2d32; border:1px solid #9697a0; padding:12px; margin:12px 0; color:var(--bright); border-radius:3px; }
+.canonical-forum .public-discussion { padding:0; font:inherit; }
+.canonical-forum .public-discussion input:not([type=checkbox]),.canonical-forum .public-discussion textarea { background:#202124; color:var(--text); border-color:var(--control-line); font-size:15px; width:100%; }
+.canonical-forum .public-discussion textarea { min-height:130px; padding:12px; }
+.canonical-forum .public-discussion label { color:var(--text); font-size:14px; }
+.canonical-forum .public-discussion button:not(.post-id):not(.post-quote) { padding:9px 12px; font:inherit; border-radius:3px; }
+.canonical-forum .public-discussion p { font-size:13px; }
+.canonical-forum .public-discussion [role=status] { color:var(--text); }
+.canonical-forum .public-discussion [role=alert] { color:var(--bright); }
+.canonical-forum .public-discussion progress { width:100%; accent-color:var(--accent); }
+.canonical-forum .public-discussion details { background:var(--surface); }
+.forum-pending { border:1px solid var(--control-line); padding:12px; margin:16px 0; background:var(--surface); border-radius:3px; }
+.forum-compose { border-top:1px solid var(--line); margin-top:24px; padding:18px 0; }
+.forum-compose>h1,.forum-compose>h2 { font-size:20px; margin-bottom:16px; }
+.forum-tab { max-width:800px; margin:auto; padding:0 28px 36px; }
+body:has(.canonical-forum) { background:#18191b; }
+@media(max-width:420px){.canonical-forum { padding-left:14px; padding-right:14px; }.forum-post { padding:13px; }.forum-network { font-size:10px; }.forum-header { gap:8px; }}
+
+.publication-progress { padding: .75rem 0; }
+.publication-stages { display: flex; justify-content: space-between; padding: 0; margin: 0 0 .6rem; list-style: none; color: var(--muted, #b6b8ba); gap: .5rem; }
+.publication-stages [aria-current="step"], .publication-stages .complete { color: var(--text, #e2e3e4); font-weight: 600; }
+.publication-progress progress { width: 100%; }

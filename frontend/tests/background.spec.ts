@@ -118,7 +118,7 @@ test('v4 wallet page has exact sender admission and cannot initialize identities
   } finally { Reflect.deleteProperty(globalThis, 'chrome'); }
 });
 
-test('permissionless v6 port admits only the exact installed side panel and no wallet or web page', async () => {
+test('public port admits only named installed pages and well-formed forum links', async () => {
   let connect: (port: chrome.runtime.Port) => void = () => {};
   const noop = { addListener: () => {} };const id = 'a'.repeat(32);const base = `chrome-extension://${id}/`;
   Object.defineProperty(globalThis, 'chrome', { configurable: true, value: {
@@ -131,8 +131,8 @@ test('permissionless v6 port admits only the exact installed side panel and no w
   try {
     await import(`${pathToFileURL(resolve('dist/background.js')).href}?permissionless=${Date.now()}`);
     for (const [sender, url] of [[id, base + 'sidepanel.html?extra'], [id, base + 'wallet-post.html#post=11111111-1111-4111-8111-111111111111'],
-      [id, base + 'public-post.html'], ['b'.repeat(32), base + 'sidepanel.html'], [id, 'https://attacker.example/sidepanel.html']]) connect(port(sender, url));
-    expect(admitted).toEqual([]);connect(port(id, base + 'sidepanel.html'));expect(admitted).toEqual([base + 'sidepanel.html']);
+      [id, base + 'forum.html?post=3&extra=1'],[id,base+'forum.html?post=0'],[id,base+'forum.html/other'],[id,base+'forum.html?new=comment'],[id, base + 'public-post.html'], ['b'.repeat(32), base + 'sidepanel.html'], [id, 'https://attacker.example/sidepanel.html']]) connect(port(sender, url));
+    expect(admitted).toEqual([]);const allowed=['sidepanel.html','legacy.html','forum.html?post=3#post-3','forum.html?new=thread'];for(const url of allowed)connect(port(id,base+url));expect(admitted).toEqual(allowed.map(url=>base+url));
   } finally { Reflect.deleteProperty(globalThis, 'chrome'); }
 });
 

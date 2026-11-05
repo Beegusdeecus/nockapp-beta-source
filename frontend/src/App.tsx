@@ -1,3 +1,4 @@
+import { CanonicalForum } from './components/CanonicalForum';
 import { api } from './platform/browser';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import type { ForumData, Navigation, PostReference, Selection, View } from './model';
@@ -38,7 +39,9 @@ function loadNavigation(value: unknown): Navigation {
   return { ...nav, stack };
 }
 
-export default function App() {
+export default function App() { return location.pathname.endsWith('/legacy.html') ? <LegacyApp/> : <CanonicalForum/>; }
+
+function LegacyApp() {
   const [shared, setShared] = useState(false);
   const [opened, setOpened] = useState(false);
   const chosen = useRef(false);

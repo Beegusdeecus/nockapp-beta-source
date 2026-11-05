@@ -18,7 +18,7 @@ const test = base.extend<Fixtures>({
       const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
       const id = new URL(worker.url()).host;
       const panel = await context.newPage();
-      await panel.goto(`chrome-extension://${id}/sidepanel.html`);
+      await panel.goto(`chrome-extension://${id}/legacy.html`);
       await expect(panel.getByRole('button', { name: 'Explore demo discussion' })).toBeVisible();
       await use({ context, panel, worker, id, profile });
     } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
@@ -358,7 +358,7 @@ test('empty post creates a thread; opening post is referenced and discussion per
   await expect(panel.locator('.thread-view .reference-link')).toHaveCount(2);
   await panel.close();
   const reopened = await context.newPage();
-  await reopened.goto(`chrome-extension://${id}/sidepanel.html`);
+  await reopened.goto(`chrome-extension://${id}/legacy.html`);
   await expect(reopened.getByRole('heading', { level: 1 })).toHaveText('A fresh anonymous conversation');
   await reopened.getByRole('button', { name: 'Back to references' }).click();
   await expect(reopened.getByText('1 reference', { exact: true })).toBeVisible();
@@ -468,7 +468,7 @@ test('native toolbar action gets the selected post using activeTab; browsing alo
 test('two simultaneous panels retain both posts instead of overwriting stale snapshots', async ({ extension }) => {
   const { panel, context, id, worker } = extension;
   const second = await context.newPage();
-  await second.goto(`chrome-extension://${id}/sidepanel.html`);
+  await second.goto(`chrome-extension://${id}/legacy.html`);
   await expect(second.getByRole('button', { name: 'Explore demo discussion' })).toBeVisible();
   async function prepare(page: Page, suffix: string) {
     await selectUrl(page, `https://x.com/demo/status/19000000000000000${suffix}`);
@@ -651,7 +651,7 @@ test('v1 upgrade preserves posts, navigation and all old drafts; flattening and 
     });
   }, { legacy, post });
   const updated = await context.newPage();
-  await updated.goto(`chrome-extension://${id}/sidepanel.html`);
+  await updated.goto(`chrome-extension://${id}/legacy.html`);
   await expect(updated.getByRole('heading', { level: 1 })).toHaveText('My existing discussion');
   await expect(updated.getByTestId('legacy-b')).toBeFocused();
   await expect(updated.locator('.comment')).toHaveCount(3);
@@ -704,6 +704,6 @@ test('an immediate panel close still lets the worker finish the last draft edit'
   await panel.getByRole('textbox', { name: 'Your comment' }).fill('The last edit must survive an immediate close.');
   await panel.close();
   const reopened = await context.newPage();
-  await reopened.goto(`chrome-extension://${id}/sidepanel.html`);
+  await reopened.goto(`chrome-extension://${id}/legacy.html`);
   await expect(reopened.getByRole('textbox', { name: 'Your comment' })).toHaveValue('The last edit must survive an immediate close.');
 });

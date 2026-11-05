@@ -11,7 +11,7 @@ const test = base.extend<{ extension: { panel: Page; worker: Worker } }>({
       viewport: { width: 390, height: 844 }, args: [`--disable-extensions-except=${path}`, `--load-extension=${path}`, '--no-sandbox'] });
     try {
       const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
-      const panel = await context.newPage();await panel.goto(`chrome-extension://${new URL(worker.url()).host}/sidepanel.html`);
+      const panel = await context.newPage();await panel.goto(`chrome-extension://${new URL(worker.url()).host}/legacy.html`);
       await expect(panel.getByRole('button', { name: 'Explore demo discussion' })).toBeVisible();
       await use({ panel, worker });
     } finally { await context.close();await rm(profile, { recursive: true, force: true }); }

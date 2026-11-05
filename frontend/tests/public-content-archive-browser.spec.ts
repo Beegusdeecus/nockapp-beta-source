@@ -46,7 +46,7 @@ for(const mode of ['roundtrip','tampered','partial','old-helper','large-import']
    }) as unknown as typeof chrome.runtime.connectNative;
   },{f,mode});
   const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(`chrome-extension://${new URL(worker.url()).host}/sidepanel.html`);
+  await page.goto(`chrome-extension://${new URL(worker.url()).host}/legacy.html`);
   await page.getByRole('button',{name:'Shared · Base Sepolia'}).click();
   await page.getByRole('button',{name:'Public · permissionless v5',exact:true}).click();
   await expect(page.getByText('Public discussions',{exact:true})).toBeVisible();

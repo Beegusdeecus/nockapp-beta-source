@@ -61,7 +61,7 @@ async function helper(worker: Worker, options: { unavailable?: boolean; dropUseR
   }, options);
 }
 async function composer(page: Page, id: string) {
-  await page.goto(`chrome-extension://${id}/sidepanel.html`);
+  await page.goto(`chrome-extension://${id}/legacy.html`);
   await page.getByRole('button', { name: 'Explore demo discussion' }).click();
   await page.locator('.thread-result').first().click();
   return page.getByRole('form', { name: 'Write a comment' });

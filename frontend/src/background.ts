@@ -14,22 +14,24 @@ api().runtime.onConnect.addListener((port) => {
   if (port.name === PUBLIC_PORT && port.sender?.id === api().runtime.id) {
     const url=port.sender.url??'';const base=api().runtime.getURL('public-wallet.html');
     if(url===api().runtime.getURL('public-tickets.html')) { attachPublicDiscussion(port,undefined,true);return; }
+    const forumBase=api().runtime.getURL('forum.html');
+    const forum=url.startsWith(forumBase)&&/^(?:\?post=[1-9][0-9]{0,15}(?:#post-[1-9][0-9]{0,15})?|\?new=thread)?$/.test(url.slice(forumBase.length));
     const wallet=url.startsWith(base+'#post=') && /^#post=[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(url.slice(base.length));
-    if (url === api().runtime.getURL('sidepanel.html') || wallet) { attachPublicDiscussion(port,wallet?url.slice(base.length+6):undefined);return; }
+    if (url === api().runtime.getURL('sidepanel.html') || url === api().runtime.getURL('legacy.html') || forum || wallet) { attachPublicDiscussion(port,wallet?url.slice(base.length+6):undefined);return; }
   }
   if (port.name === AUTHORED_PORT && port.sender?.id === api().runtime.id) {
     const url = port.sender.url ?? '';const walletBase = api().runtime.getURL('wallet-post.html');
     const wallet = url.startsWith(walletBase + '#post=') && /^#post=[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(url.slice(walletBase.length));
-    if (url === api().runtime.getURL('sidepanel.html') || wallet) { attachAuthoredDiscussion(port, wallet, wallet ? url.slice(walletBase.length + 6) : undefined);return; }
+    if (url === api().runtime.getURL('sidepanel.html') || url === api().runtime.getURL('legacy.html') || wallet) { attachAuthoredDiscussion(port, wallet, wallet ? url.slice(walletBase.length + 6) : undefined);return; }
   }
 
-  if (port.name === BUNDLE_PORT && port.sender?.id === api().runtime.id && port.sender.url === api().runtime.getURL('sidepanel.html')) {
+  if (port.name === BUNDLE_PORT && port.sender?.id === api().runtime.id && [api().runtime.getURL('sidepanel.html'),api().runtime.getURL('legacy.html')].includes(port.sender.url??'')) {
     attachBundleDiscussion(port);return;
   }
-  if (port.name === BASE_PORT && port.sender?.id === api().runtime.id && port.sender.url === api().runtime.getURL('sidepanel.html')) {
+  if (port.name === BASE_PORT && port.sender?.id === api().runtime.id && [api().runtime.getURL('sidepanel.html'),api().runtime.getURL('legacy.html')].includes(port.sender.url??'')) {
     attachBaseDiscussion(port);return;
   }
-  if (port.name === FACT_PORT && port.sender?.id === api().runtime.id && port.sender.url === api().runtime.getURL('sidepanel.html')) {
+  if (port.name === FACT_PORT && port.sender?.id === api().runtime.id && [api().runtime.getURL('sidepanel.html'),api().runtime.getURL('legacy.html')].includes(port.sender.url??'')) {
     attachZkidFacts(port);return;
   }
   if (port.name === 'zkid-public-post' && port.sender?.id === api().runtime.id

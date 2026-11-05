@@ -7,7 +7,7 @@ import { validTicketOffer, validTicketPending, validArmedPurchase, validTicketAn
 import { validRefundState, validRefundResult } from './publicRefunds';
 import { validArchive, validArchiveCapabilities, validArchiveExport, validArchiveRestore, validArchiveStatus } from './publicContentArchive';
 export const PUBLIC_PORT = 'nockapp-permissionless-discussion';
-export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-6';
+export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-8';
 const NATIVE = 'nockapp-zkid-public-post-native-v1';
 const integer = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
 const hex = (v: unknown, size = 64): v is string => typeof v === 'string' && new RegExp(`^[0-9a-f]{${size}}$`).test(v) && !/^0+$/.test(v);
@@ -27,18 +27,23 @@ export type PublicSubmission = { core: PublicCore; phase: string; bundle_hash: s
 export type PublicRow = { post_number: string; state: string; canonical_indexed: boolean; proofs_verified: boolean;
   bundle_hash?: string; indexed_at?: number; post?: PublicPost; thread?: PublicReference | null; references?: PublicReference[];
   relationship_state?: string; display?: { address: string | null; followers: null | { threshold: number; qualified_when_indexed: true; indexed_at: number; credential_profile: string }; history: PublicReference[] | null } };
-export type PublicPage = { posts: PublicRow[]; requested_numbers: string[]; next_number: string; next_after: number; after: number; more: boolean;
+export type PublicPage = { verifier_version: string; posts: PublicRow[]; requested_numbers: string[]; next_number: string; next_after: number; after: number; more: boolean;
   finalized_block: { number: string; hash: string }; whole_log_complete: false };
 export type PublicExport = { profile: 'nockapp-public-submission-v5'; scope: PublicScope; bundle_hash: string;
   bundle_base64: string; calldata: string; contains_private_key: false; personal_wallet_required: false };
 export type DirectReady = { scope: PublicScope; bundle_hash: string; calldata: string; public_readback_checked: true; payer_address_public: true };
 export type PublicSourceState = { profile: 'nockapp-renewal-enrollment-v3'; state: string; credential_saved: boolean; post_text: string | null };
 export type PublicSourceStatus = { profile: 'nockapp-public-source-status-v1'; credential_record_present: boolean; renewal_pending: boolean };
+export type PublicSourceFinality = { profile: 'nockapp-public-source-finality-v1'; chain_id: 84532;
+  latest_block: number; finalized_block: number; latest_revision: number; finalized_revision: number;
+  target_block: number | null; pending: boolean };
+export type TicketPaymentProgress = { profile: 'nockapp-ticket-payment-progress-v1'; pack_hash: string;
+  state: 'not-seen' | 'confirming' | 'finalized'; latest_block: number; finalized_block: number; payment_block: number | null };
 export type PublicOperation = 'public-capabilities' | 'public-identity-options' | 'public-initialize-identity' | 'public-adopt-identity'
   | 'public-archive-capabilities' | 'public-archive-export-object' | 'public-archive-import-object' | 'public-archive-cache-status'
-  | 'public-source-status' | 'public-source-begin' | 'public-source-check-post' | 'public-source-recover' | 'public-source-cancel'
+  | 'public-source-status' | 'public-source-finality' | 'public-source-begin' | 'public-source-check-post' | 'public-source-recover' | 'public-source-cancel'
   | 'public-ticket-status' | 'public-ticket-prepare' | 'public-ticket-payment' | 'public-ticket-recover'
-  | 'public-ticket-offer' | 'public-ticket-pending' | 'public-ticket-arm' | 'public-ticket-intent' | 'public-ticket-find' | 'public-ticket-close-attempt'
+  | 'public-ticket-offer' | 'public-ticket-pending' | 'public-ticket-arm' | 'public-ticket-intent' | 'public-ticket-find' | 'public-ticket-progress' | 'public-ticket-close-attempt'
   | 'public-ticket-refund-request' | 'public-ticket-refund-result'
   | 'public-ticket-refund-state' | 'public-ticket-refund-status' | 'public-ticket-refund-recover'
   | 'public-wallet-recover' | 'public-wallet-request' | 'public-wallet-result' | 'public-wallet-finish' | 'public-wallet-reset'
@@ -80,7 +85,7 @@ export function validPublicBody(op: string, b: Record<string, unknown>): boolean
   if(op==='public-archive-import-object')return exact(b,['archive','approve_public_import'])&&b.approve_public_import===true&&validArchive(b.archive,1);
   if(op==='public-archive-cache-status')return exact(b,['bundle_hashes'])&&Array.isArray(b.bundle_hashes)&&b.bundle_hashes.length>=1&&b.bundle_hashes.length<=4
     &&b.bundle_hashes.every((h,i,a)=>hash(h)&&(i===0||h>a[i-1]));
-  if (op === 'public-source-status') return exact(b, []);
+  if (op === 'public-source-status' || op === 'public-source-finality') return exact(b, []);
   if (op === 'public-source-begin') return exact(b, ['username', 'approve_source_check']) && typeof b.username === 'string'
     && /^[A-Za-z0-9_]{1,15}$/.test(b.username) && b.approve_source_check === true;
   if (op === 'public-source-check-post') return exact(b, ['tweet_id', 'approve_source_check']) && typeof b.tweet_id === 'string'
@@ -90,6 +95,7 @@ export function validPublicBody(op: string, b: Record<string, unknown>): boolean
   if (['public-capabilities', 'public-identity-options', 'public-ticket-status', 'public-ticket-recover', 'public-ticket-offer',
     'public-ticket-pending','public-ticket-intent','public-ticket-find','public-ticket-refund-request','public-ticket-refund-state'].includes(op)) return exact(b, []);
   if (['public-ticket-refund-status','public-ticket-refund-recover'].includes(op)) return exact(b,['pack_hash']) && hash(b.pack_hash);
+  if (op==='public-ticket-progress')return exact(b,['pack_hash'])&&hash(b.pack_hash);
   if (op==='public-ticket-arm') return exact(b,['pack_hash','payer','nonce','approve_payment']) && hash(b.pack_hash) && address(b.payer) && integer(b.nonce) && b.approve_payment===true;
   if (op==='public-ticket-close-attempt') return exact(b,['pack_hash','payment_intent_sha256','approve_close_attempt']) && hash(b.pack_hash) && hex(b.payment_intent_sha256) && b.approve_close_attempt===true;
   if (op==='public-ticket-refund-result') return exact(b,['request_sha256','signature']) && hex(b.request_sha256) && typeof b.signature==='string' && /^0x[0-9a-fA-F]{130}$/.test(b.signature);
@@ -199,6 +205,19 @@ export function publicProjection(op: string, v: unknown, b: Record<string, unkno
   }
   if(op==='public-archive-cache-status')return validArchiveStatus(v)&&canonicalAscii(v.bundle_hashes)===canonicalAscii(b.bundle_hashes);
   if (!object(v)) return false;
+  if (op==='public-ticket-progress')return exact(v,['profile','pack_hash','state','latest_block','finalized_block','payment_block'])
+    && v.profile==='nockapp-ticket-payment-progress-v1' && hash(v.pack_hash) && v.pack_hash===b.pack_hash
+    && integer(v.latest_block) && integer(v.finalized_block) && v.finalized_block<=v.latest_block
+    && (v.state==='confirming'?integer(v.payment_block,1)&&v.payment_block>v.finalized_block&&v.payment_block<=v.latest_block
+      : ['not-seen','finalized'].includes(String(v.state))&&v.payment_block===null);
+  if (op === 'public-source-finality') return exact(v, ['profile','chain_id','latest_block','finalized_block',
+    'latest_revision','finalized_revision','target_block','pending']) && v.profile==='nockapp-public-source-finality-v1'
+    && v.chain_id===84532 && integer(v.latest_block) && integer(v.finalized_block) && v.finalized_block<=v.latest_block
+    && integer(v.latest_revision,1) && integer(v.finalized_revision,1) && v.finalized_revision<=v.latest_revision
+    && typeof v.pending==='boolean' && (v.pending
+      ? v.latest_revision>v.finalized_revision && integer(v.target_block,1)
+        && v.target_block>v.finalized_block && v.target_block<=v.latest_block
+      : v.latest_revision===v.finalized_revision && v.target_block===null);
   if (op === 'public-source-status') return exact(v, ['profile', 'credential_record_present', 'renewal_pending'])
     && v.profile === 'nockapp-public-source-status-v1' && typeof v.credential_record_present === 'boolean' && typeof v.renewal_pending === 'boolean';
   if (['public-source-begin', 'public-source-check-post', 'public-source-recover', 'public-source-cancel'].includes(op)) return exact(v, ['profile', 'state', 'credential_saved', 'post_text'])
@@ -290,6 +309,8 @@ export function publicProjection(op: string, v: unknown, b: Record<string, unkno
 }
 
 let active: symbol | undefined;
+const waiting: (()=>void)[]=[];
+function nextPublicRequest(){if(!active)waiting.shift()?.();}
 export const PUBLIC_NATIVE_HOST = 'com.nockapp.zkid.public';
 const ORIGINAL_NATIVE_HOST = 'com.nockapp.zkid';
 let admittedPublicHost: string | undefined;
@@ -297,7 +318,7 @@ export function attachPublicDiscussion(ui: chrome.runtime.Port, walletPostId?: s
   let connected = true;let cleanup: (() => void) | undefined;
   ui.onDisconnect.addListener(() => { connected = false;cleanup?.(); });
   const emit = (v: object) => { if (connected) try { ui.postMessage({ version: PUBLIC_VERSION, ...v }); } catch { connected = false;cleanup?.(); } };
-  ui.onMessage.addListener((m: unknown) => {
+  const receive=(m: unknown,deadline=performance.now()+185000)=>{
     if (!connected || cleanup) return;
     if (!object(m) || !exact(m, ['version', 'operation', 'body']) || m.version !== PUBLIC_VERSION || typeof m.operation !== 'string' || !object(m.body)
       || !validPublicBody(m.operation, m.body) || !bounded(m, m.operation==='public-archive-import-object'?98304:32768)
@@ -306,7 +327,20 @@ export function attachPublicDiscussion(ui: chrome.runtime.Port, walletPostId?: s
       || walletPostId !== undefined && !['public-capabilities','public-outbox','public-wallet-request','public-wallet-result','public-wallet-finish','public-wallet-recover','public-wallet-reset'].includes(m.operation)
       || walletPostId !== undefined && m.operation.startsWith('public-wallet-') && m.body.post_id !== walletPostId
       || walletPostId === undefined && m.operation.startsWith('public-wallet-')) { emit({ error: 'message-schema' });return; }
-    if (active) { emit({ error: 'helper-busy' });return; }const owner = Symbol('public-operation');active = owner;
+    const remaining=deadline-performance.now();
+    if(remaining<=0){emit({error:'helper-busy'});return;}
+    if(active){
+      if(waiting.length>=8){emit({error:'helper-busy'});return;}
+      // Wait before the FIRST native dispatch. Never repeat or reroute a
+      // request that timed out or received a reply. Closing its view cancels
+      // queued work, including user-authorized mutations, before dispatch.
+      const saved=structuredClone(m);let cancelled=false;
+      const start=()=>{if(cancelled||!connected)return;cancelled=true;clearTimeout(timeout);cleanup=undefined;receive(saved,deadline);};
+      const cancel=()=>{cancelled=true;clearTimeout(timeout);const i=waiting.indexOf(start);if(i>=0)waiting.splice(i,1);cleanup=undefined;};
+      const timeout=setTimeout(()=>{cancel();emit({error:'helper-busy'});},remaining);
+      cleanup=cancel;waiting.push(start);return;
+    }
+    const owner = Symbol('public-operation');active = owner;
     const id = crypto.randomUUID().replaceAll('-', '');let settled = false;let port: chrome.runtime.Port | undefined;let timer: ReturnType<typeof setTimeout>;
     const discovery = m.operation === 'public-capabilities';
     if (discovery) admittedPublicHost = undefined;
@@ -341,22 +375,28 @@ export function attachPublicDiscussion(ui: chrome.runtime.Port, walletPostId?: s
         connection.postMessage({ profile: NATIVE, id, operation: m.operation, body: m.body });
       } catch { lost(); }
     };
-    cleanup = () => { settled = true;clearTimeout(timer);const old = port;detach();port = undefined;old?.disconnect();if (active === owner) active = undefined;cleanup = undefined; };
-    timer = setTimeout(() => done(undefined, 'recovery-needed'), 185000);dial();
-  });
+    cleanup = () => { settled = true;clearTimeout(timer);const old = port;detach();port = undefined;old?.disconnect();if (active === owner) active = undefined;cleanup = undefined;queueMicrotask(nextPublicRequest); };
+    timer = setTimeout(() => done(undefined, 'recovery-needed'), remaining);dial();
+  };
+  ui.onMessage.addListener(m=>receive(m));
 }
 let queue: Promise<unknown> = Promise.resolve();
+export class PublicOperationError extends Error {
+  constructor(readonly code:string,message:string){super(message);}
+}
 export function publicOperation<T = unknown>(operation: PublicOperation, supplied: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
   const body = structuredClone(supplied);
   const run = () => new Promise<T>((resolve, reject) => {
     try { if (!validPublicBody(operation, body) || signal?.aborted) throw new Error(); } catch { reject(new Error('Invalid or cancelled public operation.'));return; }
     let port: chrome.runtime.Port | undefined;let timer: ReturnType<typeof setTimeout>;let settled = false;
-    const done = (v?: unknown, error?: string) => { if (settled) return;settled = true;clearTimeout(timer);signal?.removeEventListener('abort', abort);port?.disconnect();if (error) reject(new Error(error));else resolve(v as T); };
+    const done = (v?: unknown, error?: string,code='operation-unavailable') => { if (settled) return;settled = true;clearTimeout(timer);signal?.removeEventListener('abort', abort);port?.disconnect();if (error) reject(new PublicOperationError(code,error));else resolve(v as T); };
     const abort = () => done(undefined, 'Operation stopped. Recover the saved purchase or post before retrying.');signal?.addEventListener('abort', abort, { once: true });
     try { port = api().runtime.connect({ name: PUBLIC_PORT });port.onDisconnect.addListener(() => { void api().runtime.lastError;done(undefined, 'The public helper disconnected. Recover the saved operation.'); });
       port.onMessage.addListener((v: unknown) => { try {
+        if(object(v)&&typeof v.version==='string'&&/^nockapp-permissionless-discussion-[0-9]+$/.test(v.version)&&v.version!==PUBLIC_VERSION)
+          return done(undefined,'NockApp background update required. Reload the extension itself; saved purchases and posts are preserved.','extension-update-required');
         if (object(v) && v.version === PUBLIC_VERSION && exact(v, ['version', 'error']) && typeof v.error === 'string') {
-          const saved = ['public-capabilities','public-page','public-numbers','public-outbox','public-identity-options','public-source-status','public-ticket-status'].includes(operation)
+          const saved = ['public-capabilities','public-page','public-numbers','public-outbox','public-identity-options','public-source-status','public-source-finality','public-ticket-status'].includes(operation)
             ? 'Your saved data is safe. Try again when the service is available.'
             : 'Check the saved operation before trying again; do not repeat a payment.';
           const messages: Record<string, string> = {
@@ -365,7 +405,7 @@ export function publicOperation<T = unknown>(operation: PublicOperation, supplie
             'recovery-needed': 'The action could not be confirmed. ' + saved,
             'unsupported-helper': 'The installed app returned an unsupported response. ' + saved,
           };
-          if (Object.hasOwn(messages, v.error)) return done(undefined, messages[v.error]);
+          if (Object.hasOwn(messages, v.error)) return done(undefined, messages[v.error],v.error);
         }
         if (!object(v) || v.version !== PUBLIC_VERSION || !exact(v, ['version', 'result']) || !publicProjection(operation, v.result, body)) return done(undefined, 'Public operation unavailable. Recover the saved purchase or post.');
         done(structuredClone(v.result));

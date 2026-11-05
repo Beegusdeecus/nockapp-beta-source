@@ -9,6 +9,7 @@ import './styles.css';
 function PublicWallet() {
   const [scope, setScope] = useState<PublicScope>();const [row, setRow] = useState<PublicSubmission>();
   const [request, setRequest] = useState<PublicWalletRequest>();const [busy, setBusy] = useState(false);const [error, setError] = useState('');
+  const [actionStatus,setActionStatus]=useState('Loading the exact saved post…');
   const [done, setDone] = useState(false);const [resetConsent, setResetConsent] = useState(false);
   useEffect(() => {
     let active = true;
@@ -31,14 +32,19 @@ function PublicWallet() {
     if(!scope||!row||busy||row.bundle_hash)return;setBusy(true);setError('');
     try {
       // Finish the account/network prompt before starting the60-second window.
+      setActionStatus('Connect your wallet and confirm Base Sepolia in MetaMask…');
       const account=await connectBaseWallet();
+      setActionStatus('Checking the exact saved post, wallet address and signing context…');
       const raw=await publicOperation<unknown>('public-wallet-request',{post_id:row.core.post.id,address:account,approve_address_disclosure:true});
       if(!validPublicWalletShape(raw))throw new Error('Unsupported exact public wallet request.');setRequest(raw);
       const checked=await validatePublicWalletRequest(raw,scope,row.core,account);
       let result:PublicSubmission;
+      setActionStatus('Saving the exact wallet authorization…');
       if(checked.signature_saved) result=await publicOperation<PublicSubmission>('public-wallet-finish',{post_id:row.core.post.id,request_sha256:checked.request_sha256,approve_save:true});
       else {
+        setActionStatus('Review the exact-post signature in MetaMask. This does not send a payment.');
         const signature=await signPublicPost(checked);
+        setActionStatus('Verifying and saving your exact authorization…');
         result=await publicOperation<PublicSubmission>('public-wallet-result',{post_id:row.core.post.id,request_sha256:checked.request_sha256,signature});
       }
       if(canonicalAscii(result.core)!==canonicalAscii(row.core))throw new Error('The saved post changed while authorizing. Keep the original request.');
@@ -48,6 +54,7 @@ function PublicWallet() {
   }
   async function recover() {
     if(!row||busy)return;setBusy(true);setError('');
+    setActionStatus('Checking for the matching saved signature without opening MetaMask…');
     try {const result=await publicOperation<PublicSubmission>('public-wallet-recover',{post_id:row.core.post.id,approve_save:true});
       if(canonicalAscii(result.core)!==canonicalAscii(row.core))throw new Error('Saved core changed');setRow(result);setDone(true);}
     catch{setError('No matching saved wallet reply was recovered. Keep this post and authorize it with MetaMask if needed.');}
@@ -55,6 +62,7 @@ function PublicWallet() {
   }
   async function reset() {
     if(!row||!request||!resetConsent||busy)return;setBusy(true);setError('');
+    setActionStatus('Checking the exact expired request before resetting it…');
     try{await publicOperation('public-wallet-reset',{post_id:row.core.post.id,request_sha256:request.request_sha256,approve_fresh_request:true});setRequest(undefined);setResetConsent(false);}
     catch{setError('A reset is available only after this exact unfinished request expires. Completed bytes cannot change.');}
     finally{setBusy(false);}
@@ -70,6 +78,7 @@ function PublicWallet() {
       {request?.binding.history&&<p>Selected common authorship: {(JSON.parse(atob(request.binding.history)).records as {number:string;contract:string}[]).map(r=>`No.${r.number} (${r.contract})`).join(', ')}</p>}
     </section>}
     <p>This signature binds the exact content, author points, deployment, references and saved public evidence. It transfers no funds and grants no token spending approval.</p>
+    {((!row&&!error)||busy)&&<section aria-label="Wallet authorization progress" aria-live="polite"><progress aria-label="Wallet authorization action"/><p>{actionStatus}</p></section>}
     {error&&<p role="alert">{error}</p>}
     {done?<p role="status">Authorization and exact final bundle saved. Return to NockApp to publish or independently check it. No gas transaction was sent here.</p>
       :row?.bundle_hash?<p role="status">This final bundle is already saved. Its committed bytes cannot receive a later wallet endorsement. Return to NockApp to check publication.</p>
