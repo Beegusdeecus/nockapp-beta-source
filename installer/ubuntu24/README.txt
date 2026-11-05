@@ -16,3 +16,5 @@ This package contains public deployment settings, not another user's identity or
 To prove earlier authorship, open that optional section in the composer, enter selected canonical post numbers, approve linking and use the normal Publish action. This uses one publication ticket, with no additional history button. Saved links are checked against the frozen bundle before publishing.
 
 Client release12 can include an unarmed saved two-ticket pack in one50-ticket payment, with explicit approval and canonical unpaid checks. It retains all recovery inputs; armed/paid/closed/refund attempts are not repurposed.
+
+Ticket finality targets the payment block rather than the moving latest block. The UI shows remaining blocks and the observed-gap percentage after finding payment. A public display-only checkpoint preserves progress across reloads; missing payment has no invented finality percentage. No payment is retried by this display.

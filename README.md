@@ -79,3 +79,5 @@ Frontend `363a0f2167db0e55cbc8d6ed1f3c693de0089b2c` distinguishes the historical
 The current composer can attach selected earlier authorship before signing, using the normal Publish action. Exact selected public references and consent survive recovery; missing or changed links block publication and wallet authorization. See evidence/selected-history-composer-release-v1.json. Live owner acceptance remains pending.
 
 Current client release12 can include an unarmed saved two-ticket pack in the50-ticket atomic checkout. See components/browser-included-ticket-client-v5/PARENT.json and evidence/included-ticket-client-v1.json. Owner payment and full beta acceptance remain pending.
+
+Ticket finality display now names the fixed payment-block target and remaining gap, preserves the observed-gap percentage across reloads, and distinguishes missing payment from unfinalized payment. Percentages describe block/step progress, not an estimated wait. This display cache never authorizes a payment, import or retry.

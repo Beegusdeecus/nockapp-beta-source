@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { canonicalAscii } from '../src/authoredWallet';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/public-tickets-v6-20261101.json',import.meta.url),'utf8'));
-for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsupported','prepared-single','crash-slot-release','older-single'])test(`50-ticket browser flow ${mode}`,async()=>{
+for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsupported','prepared-single','crash-slot-release','older-single','not-seen'])test(`50-ticket browser flow ${mode}`,async()=>{
   const f=fixture;const calls=Array.from({length:25},(_,i)=>({to:f.offer.manifest.purchase_contract,value:'0x'+BigInt(f.offer.manifest.terms.pack_price_wei).toString(16),data:'0x9c9a1061'+(i+1).toString(16).padStart(64,'0')}));
   if(['prepared-single','crash-slot-release'].includes(mode))calls[0].data=f.prepared.transaction.data;
   const batch_id=createHash('sha256').update(canonicalAscii({parameters:f.offer.parameters,packs:calls.map(c=>'0x'+c.data.slice(-64))})).digest('hex');
@@ -16,7 +16,7 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
   try{
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     await worker.evaluate(({f,base,mode})=>{
-      const state:any={single:['prepared-single','crash-slot-release','older-single'].includes(mode)?structuredClone(f.pending_prepared):structuredClone(f.empty),bulk:['saved-armed','crash-slot-release'].includes(mode)?{...base,phase:'armed',payer:f.rpc.payer}:undefined,finalized:!['saved-armed','crash-slot-release'].includes(mode),available:0,lost:false,calls:[]};Object.assign(globalThis,{bulkTest:state});
+      const state:any={single:['prepared-single','crash-slot-release','older-single'].includes(mode)?structuredClone(f.pending_prepared):structuredClone(f.empty),bulk:['saved-armed','crash-slot-release','not-seen'].includes(mode)?{...base,phase:'armed',payer:f.rpc.payer}:undefined,finalBlock:100,finalized:!['saved-armed','crash-slot-release','not-seen'].includes(mode),available:0,lost:false,calls:[]};Object.assign(globalThis,{bulkTest:state});
       chrome.runtime.connectNative=(()=>{
         const listeners=new Set<(v:unknown)=>void>();
         return {onMessage:{addListener:(fn:(v:unknown)=>void)=>listeners.add(fn),removeListener:(fn:(v:unknown)=>void)=>listeners.delete(fn)},onDisconnect:{addListener:()=>{},removeListener:()=>{}},disconnect:()=>{},postMessage:(m:any)=>{
@@ -29,7 +29,7 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
           else if(m.operation==='public-ticket-bulk-status')result=state.bulk??{profile:base.profile,phase:'none'};
           else if(m.operation==='public-ticket-bulk-prepare'){state.bulk??=structuredClone(base);result=state.bulk;}
           else if(m.operation==='public-ticket-bulk-arm'){state.single=structuredClone(f.empty);if(state.bulk.phase!=='prepared')throw Error('Duplicate dispatch');state.bulk={...state.bulk,phase:'armed',payer:m.body.payer};result={...state.bulk,dispatch_authorized:true};}
-          else if(m.operation==='public-ticket-bulk-progress')result={profile:'nockapp-ticket-payment-progress-v1',batch_id:base.batch_id,pack_hash:'0x'+base.calls[0].data.slice(-64),state:state.finalized?'finalized':'confirming',latest_block:120,finalized_block:state.finalized?115:100,payment_block:state.finalized?null:110};
+          else if(m.operation==='public-ticket-bulk-progress')result={profile:'nockapp-ticket-payment-progress-v1',batch_id:base.batch_id,pack_hash:'0x'+base.calls[0].data.slice(-64),state:mode==='not-seen'?'not-seen':state.finalized?'finalized':'confirming',latest_block:120,finalized_block:state.finalized?115:state.finalBlock,payment_block:mode==='not-seen'||state.finalized?null:110};
           else if(m.operation==='public-ticket-bulk-recover'){
             state.single=structuredClone(f.empty);state.bulk={...state.bulk,phase:state.bulk.imported_tickets>=48?'complete':'importing',imported_tickets:state.bulk.imported_tickets+2,settled_tickets:state.bulk.settled_tickets+2,transaction_hash:f.paid.payment_tx};state.available=state.bulk.imported_tickets;result=state.bulk;
             if(mode==='lost-import'&&!state.lost){state.lost=true;queueMicrotask(()=>listeners.forEach(fn=>fn({profile:m.profile,id:m.id,status:'rejected',code:'native-operation-unavailable',recoverable:true,laboratory:true,verified:false})));return;}
@@ -58,6 +58,12 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
       }) as any;
     },{f,mode});
     const page=await context.newPage();await page.goto(`chrome-extension://${new URL(worker.url()).host}/public-tickets.html`);
+    if(mode==='not-seen'){
+      await expect(page.getByRole('status')).toContainText('Payment not found onchain yet');
+      await expect(page.getByText('Finality percentage starts once the payment is found.',{exact:false})).toBeVisible();
+      await expect(page.getByRole('progressbar',{name:'Payment finality progress'})).toHaveCount(0);
+      expect(await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).toEqual([]);return;
+    }
     if(mode==='older-single'){
       await expect(page.getByRole('button',{name:'Review ticket purchase',exact:true})).toBeVisible();
       await expect(page.getByRole('button',{name:'Review 50 tickets',exact:true})).toHaveCount(0);
@@ -66,6 +72,14 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
     if(['saved-armed','crash-slot-release'].includes(mode)){
       await expect(page.getByRole('status')).toContainText('Waiting for chain finality');
       expect(await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).toEqual([]);
+      await expect(page.getByText('Finality target: payment block 110.',{exact:false})).toContainText('10 blocks remain');
+      await expect(page.getByRole('progressbar',{name:'Payment finality progress'})).toHaveAttribute('value','0');
+      await worker.evaluate(()=>{(globalThis as any).bulkTest.finalBlock=105;});
+      await page.getByRole('button',{name:'Check saved payment',exact:true}).click();
+      await expect(page.getByRole('progressbar',{name:'Payment finality progress'})).toHaveAttribute('value','50');
+      await expect(page.getByText('Finality target: payment block 110.',{exact:false})).toContainText('5 blocks remain');
+      await page.reload();
+      await expect(page.getByRole('progressbar',{name:'Payment finality progress'})).toHaveAttribute('value','50');
       await worker.evaluate(()=>{(globalThis as any).bulkTest.finalized=true;});await page.getByRole('button',{name:'Check saved payment',exact:true}).click();
     }else{
       await page.getByRole('checkbox',{name:/I accept the price, expiry/}).check();await page.getByRole('button',{name:'Review 50 tickets',exact:true}).click();
