@@ -138,3 +138,6 @@ Checks:71 purchase/recovery/refund/native installation cases,20 backend/migratio
 Frontend `363a0f2167db0e55cbc8d6ed1f3c693de0089b2c` distinguishes the historical imported-ticket receipt from current available inventory. Reopening a completed purchase after spending its tickets does not offer a second payment. The full browser check passed 313 cases with one optional skip. No wallet or private-holder action was performed. Actual owner 50-ticket payment/import remains pending.
 
 `contracts/deployed-base-sepolia-v1/` now provides the original compiler input, public constructor/deployment values and a standalone pinned-solc checker reproducing all 1,010 deployed runtime bytes including metadata, plus the original creation bytecode. See its README. This closes the exact index build recipe gap; it does not establish whole-enclave reproducibility or complete live beta acceptance. Earlier component snapshots remain unchanged.
+
+
+Current executable source/build versions and the original legacy count overlay are documented in build-reproduction/README.md. Historical component snapshots remain unchanged.

@@ -1,0 +1,18 @@
+[package]
+name = "nockapp-renewal-count-v3"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+credx = { path = "../local/credx-source-691297a7f9ffcc1f51a5d30741086402d64544c9" }
+nockapp-authorship-v4 = { path = "../authorship-crypto" }
+rand = "=0.8.5"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.149"
+
+[profile.dev]
+debug = 0
+incremental = false

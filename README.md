@@ -1,5 +1,7 @@
 # NockApp beta source snapshots
 
+Current source/build checkpoint: the approved EIF is `7da0dc70023d974b5d868e7ebf2d31bb163702d9c5916d282bf26a5080d83a9d` (code `ef78c16a2902c7e14ff0d21c585555c8beb2d64f616aa94e1e10d84ba34c20f8`). Five Rust workers have matching clean builds; see [build reproduction](build-reproduction/README.md) and the separate legacy count snapshot. Ubuntu24 installer/prerequisite source and component admission are included. Full private/live beta acceptance, protected recovery and final confinement remain open.
+
 Source and test vectors for the Ubuntu public-beta implementation. This is a release-candidate source publication, not an announcement that the beta has passed live acceptance.
 
 The installed browser client, proposed paid-client update, terminal client, payment backend, one-time journal setup tool and Nitro issuer keep separate directories under `components/`. Identical-looking modules from different versions are not silently merged. `evidence/runtime-source-index.json` ties each exported source byte to its frozen runtime manifest. `PUBLIC-SOURCE-MANIFEST.json` indexes this entire source release. No operator configuration, credentials, user records, prebuilt executable or private repository history is included.

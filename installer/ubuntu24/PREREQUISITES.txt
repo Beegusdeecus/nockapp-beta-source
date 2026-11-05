@@ -1,0 +1,30 @@
+NockApp Ubuntu 24.04 x86-64 desktop prerequisites
+
+SETUP.py never changes system policy or installs system packages. Run it as your normal desktop user, without sudo.
+Use Google Chrome and a desktop session with an unlocked Secret Service keyring (such as GNOME Keyring) for private-key operations.
+The installer refuses existing NockApp helpers or private state. Do not use it to replace your current installation.
+
+Reviewed Ubuntu package versions:
+  bubblewrap 0.9.0-1ubuntu0.3 amd64
+  apparmor-profiles 4.0.1really4.0.1-0ubuntu0.24.04.9 all
+Use Ubuntu's authenticated repositories. Review the package actions first; stop on removals, unexpected upgrades or missing versions.
+  sudo apt-get --no-upgrade --no-remove --simulate install bubblewrap=0.9.0-1ubuntu0.3 apparmor-profiles=4.0.1really4.0.1-0ubuntu0.24.04.9
+  sudo apt-get --no-upgrade --no-remove install bubblewrap=0.9.0-1ubuntu0.3 apparmor-profiles=4.0.1really4.0.1-0ubuntu0.24.04.9
+Google Chrome and your desktop keyring are separate prerequisites. This kit does not bypass their login or ask for their secrets.
+
+Ubuntu's user-namespace restriction requires the reviewed bwrap-userns-restrict profile from apparmor-profiles.
+It allows bubblewrap to create its sandbox and denies capabilities to its child programs.
+Review the whole profile before enabling it. This is an administrator policy action, not something SETUP.py performs.
+  less /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+  sha256sum /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+Expected SHA-256: 11d39094f044f0cda0febb3ad517b830301da6b2ce929664af09ee9e4dd264f9
+Stop if the hash differs. Stop for separate review if /etc/apparmor.d/local/bwrap-userns-restrict or /etc/apparmor.d/local/unpriv_bwrap exists.
+If /etc/apparmor.d/bwrap-userns-restrict already exists, compare it with the reviewed source; do not overwrite a different local policy.
+If it is absent and you approve this exact profile:
+  sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/bwrap-userns-restrict
+Then load only that reviewed profile:
+  sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict
+
+Keep /proc/sys/kernel/apparmor_restrict_unprivileged_userns equal to 1. Never disable AppArmor or that global restriction to get setup working.
+SETUP.py checks the pinned binary/profile, global protection and an actual isolated sandbox before creating extension/configuration/data files.
+If it stops, preserve the kit and report the message; do not bypass checks or clear saved private state.
