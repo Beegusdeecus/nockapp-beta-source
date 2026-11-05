@@ -1,0 +1,10 @@
+{
+  "bytes": 694040,
+  "hardware_verified": false,
+  "independent_party_reproduction": false,
+  "matching_clean_target_builds": 2,
+  "profile": "nockapp-zkid-nsm-local-source-reproduction-v1",
+  "sha256": "68abaa2f68f09f4a9cc03d3593d913f6ffb90274759ea07e090756c50767fdc1",
+  "source_commit": "4bf743e17f9b4174cc16a4ed743086ca6e541405",
+  "toolchain": "nightly-2026-04-03"
+}
