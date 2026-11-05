@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { clearDraftIfUnchanged, readDraft, writeDraft, type Draft } from '../data/drafts';
 import { acknowledgePublicIntent, publicIntents } from '../data/publicIntents';
+import { parseHistoryNumbers } from '../publicHistory';
 import type { PublicSelection } from '../publicDiscussion';
 
 export function PublicComposer({ draftKey, reply, direct = false, availableTickets, onNeedTickets, onSubmit }: { draftKey: string; reply: boolean; direct?: boolean;
   availableTickets?: number; onNeedTickets?: () => void;
-  onSubmit: (draft: Draft, selection: PublicSelection) => Promise<string | null> }) {
+  onSubmit: (draft: Draft, selection: PublicSelection, historyNumbers: number[]) => Promise<string | null> }) {
   const [draft, setDraft] = useState<Draft>({ title: '', body: '', credentials: [] });
   const [ready, setReady] = useState(false);const [busy, setBusy] = useState(false);const [error, setError] = useState('');
   const [address, setAddress] = useState(false);const [followers, setFollowers] = useState(false);const [threshold, setThreshold] = useState('10000');
+  const [history, setHistory] = useState('');const [linkConsent, setLinkConsent] = useState(false);
   useEffect(() => {
     let active = true;
     void readDraft(draftKey).then(async d => {
@@ -26,10 +28,12 @@ export function PublicComposer({ draftKey, reply, direct = false, availableTicke
       try {
         if (followers && (!/^(0|[1-9][0-9]*)$/.test(threshold) || !Number.isSafeInteger(Number(threshold)) || Number(threshold) >= Number.MAX_SAFE_INTEGER))
           throw new Error('Enter a whole-number threshold from 0 to 9007199254740990. Equality does not satisfy greater than.');
-        const id = await onSubmit(draft, { address, followers_threshold: followers ? Number(threshold) : null });
+        const historyNumbers = parseHistoryNumbers(history);
+        if (historyNumbers.length && !linkConsent) throw new Error('Approve linking the selected earlier posts before publishing.');
+        const id = await onSubmit(draft, { address, followers_threshold: followers ? Number(threshold) : null }, historyNumbers);
         if(id===null)return; // Parent displays submission errors; keep the draft.
         if (await clearDraftIfUnchanged(draftKey, draft)) {
-          await acknowledgePublicIntent(id, true);setDraft({ title: '', body: '', credentials: [] });setAddress(false);setFollowers(false);
+          await acknowledgePublicIntent(id, true);setDraft({ title: '', body: '', credentials: [] });setAddress(false);setFollowers(false);setHistory('');setLinkConsent(false);
         }
       } catch (e) { setError(e instanceof Error ? e.message : 'Publication unavailable. Your draft is preserved.'); }
       finally { setBusy(false); }
@@ -44,6 +48,11 @@ export function PublicComposer({ draftKey, reply, direct = false, availableTicke
       <label><input type="checkbox" checked={followers} disabled={busy} onChange={e => setFollowers(e.target.checked)} />Prove followers greater than a threshold</label>
       {followers && <><label>Follower threshold<input inputMode="numeric" value={threshold} disabled={busy} onChange={e => setThreshold(e.target.value)} /></label>
         <p>Your account, exact count and credential dates stay hidden. A badge describes eligibility when indexed, not today's follower count.</p></>}
+    </details>
+    <details><summary>Prove earlier authorship</summary>
+      <p>Link only the earlier posts you choose to this post. Your secret stays private. {direct ? 'Included in this publication.' : 'Uses the same publication ticket.'}</p>
+      <label>Earlier post numbers<input value={history} disabled={busy} placeholder="e.g. 1, 7" onChange={e => { setHistory(e.target.value);setLinkConsent(false); }} /></label>
+      {history.trim() && <label><input type="checkbox" checked={linkConsent} disabled={busy} onChange={e => setLinkConsent(e.target.checked)} />I approve linking these selected posts</label>}
     </details>
     <p>{direct ? 'Save first, then export and upload the public bundle before paying gas. Direct payment exposes your wallet address and can link these posts.' : 'Publication spends a prepaid ticket.'} Text and public proofs may become downloadable before indexing, including if submission fails.</p>
     {error && <p role="alert">{error}</p>}

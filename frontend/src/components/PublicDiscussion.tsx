@@ -141,6 +141,12 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
     setLoading('Saving the exact post and its disclosure choices…');
     const prepared = await publicOperation<PublicSubmission>('public-prepare', intentBody(intent));checkSubmission(prepared, intent);
     await acknowledgePublicIntent(intent.post.id);
+    if (intent.history && prepared.bundle_hash === null) {
+      setPublicationStage(1);setLoading('Proving authorship of your selected earlier posts…');
+      try {
+        const attached = await publicOperation<PublicSubmission>('public-attach-history', { post_id: intent.post.id, records: intent.history.records, approve_linking: true });checkSubmission(attached, intent);
+      } catch { throw Error('The selected authorship proof could not be prepared. Your exact post and selected history are saved. If wallet authorization already started, recover it on the wallet screen. This action did not publish or spend a ticket.'); }
+    }
     if (intent.selection.followers_threshold !== null && prepared.bundle_hash === null) {
       setPublicationStage(1);setLoading('Checking your saved follower credential and preparing its private proof…');
       try { await publicOperation('public-attach-followers', { post_id: intent.post.id, approve_follower_disclosure: true }); }
@@ -169,7 +175,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
   }
   const scopeKey = caps ? `${caps.scope.application}:${caps.scope.contract}` : 'unconfigured';
   const draftKey = thread ? `reply:public-v5:${scopeKey}:${thread.bundle_hash}:root` : `thread:public-v5:${scopeKey}:${selected || 'all'}`;
-  async function submit(draft: Draft, selection: PublicSelection) {
+  async function submit(draft: Draft, selection: PublicSelection, historyNumbers: number[]) {
     if (!caps || !options || working.current) throw new Error('Wait for the private authorship check. Your draft is preserved.');
     working.current = true;setBusy(true);setError('');
     setLoading('Saving your exact publication request…');
@@ -181,10 +187,19 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
         catch{throw Error('Ticket availability could not be checked. Your comment is still a draft; no publication was prepared.');}
         if(inventory.available<1)throw Error('No publication tickets available. Buy or recover tickets; your comment is still a draft.');
       }
+      const historyRefs: PublicReference[] = [];
+      for (let i = 0; i < historyNumbers.length; i += 4) {
+        setLoading('Checking the selected earlier posts…');
+        const numbers = historyNumbers.slice(i, i + 4);
+        const page = await publicOperation<PublicPage>('public-numbers', { numbers });
+        if (page.posts.length !== numbers.length || page.posts.some((r, j) => r.post_number !== String(numbers[j]) || !r.proofs_verified || r.state !== 'finalized'))
+          throw Error('An earlier post is unavailable or invalid. Your draft is preserved; no publication was prepared.');
+        historyRefs.push(...page.posts.map(r => captureRef(r, caps!.scope)));
+      }
       const value: PublicIntent = { scope: caps.scope, draft_key: draftKey,
         post: { kind: thread ? 'comment' : 'thread', id: crypto.randomUUID(), created_at: Math.floor(Date.now() / 1000), title: thread ? null : draft.title.trim(),
           body: draft.body.trim(), references: selected ? [[selected, parsePostUrl(selected).postId]] : [] }, selection,
-        thread: thread ? captureRef(thread, caps.scope) : null, references: [], acknowledged: false, released: false };
+        thread: thread ? captureRef(thread, caps.scope) : null, references: [], acknowledged: false, released: false, ...(historyRefs.length ? { history: { profile: 'nockapp-public-history-plan-v1' as const, records: historyRefs, approve_linking: true as const } } : {}) };
       const intent = await preparePublicIntent(value);setIntents((await publicIntents()).filter(r => samePublicScope(r.scope, caps.scope)));
       await continueIntent(intent);return intent.post.id;
     } catch(error){
@@ -338,6 +353,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
           <h3>{row.core.post.kind==='comment'?'Your comment':'Your thread'}</h3>
           <p>{row.core.thread?.number?`Reply to thread No.${row.core.thread.number}`:'New thread'}{row.core.post.title?` · ${row.core.post.title}`:''}</p>
           <PostBody body={row.core.post.body} className="post-body" onReference={n=>void api().tabs.create({url:forumURL(n)})}/>
+          {intents.find(i=>i.post.id===row.core.post.id)?.history&&<p>Selected authorship links: {intents.find(i=>i.post.id===row.core.post.id)!.history!.records.map(r=>`No.${r.number}`).join(', ')}.</p>}
           {row.bundle_hash&&!row.last_attempt&&['closing','expired'].includes(row.follower_window??'')&&<p role="status">The saved follower proof has run out of time. You can publish these exact bytes, but the follower badge may be missing. The original ticket assignment stays with this comment.</p>}
           {(row.last_attempt||row.phase==='submitted')&&row.last_known?.state!=='invalid'?<PublicationProgress stage={3}
             startedAt={row.last_attempt?.requested_at??row.core.post.created_at} checkedAt={row.last_known?.checked_at}
@@ -356,7 +372,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
             else throw Error('The original publication request is unavailable. Your draft is preserved.');
           })}>{ticketNeededFor===row.core.post.id?'Buy or recover tickets':row.bundle_hash&&['closing','expired'].includes(row.follower_window??'')?'Publish even if badge is missing':row.core.post.kind==='comment'?'Publish this comment':'Publish this thread'}</button>}
 
-          {!row.bundle_hash&&<details><summary>Prove earlier authorship</summary>
+          {!row.bundle_hash&&!intents.find(i=>i.post.id===row.core.post.id)?.history&&<details><summary>Prove earlier authorship</summary>
             <label>Earlier post numbers<input value={history} onChange={e=>setHistory(e.target.value)} placeholder="1, 2"/></label>
             <label><input type="checkbox" checked={linkConsent} onChange={e=>setLinkConsent(e.target.checked)}/>I approve linking these selected posts</label>
             <button disabled={busy||!linkConsent} onClick={()=>void action(()=>attachHistory(row))}>Attach selected authorship proof</button>
@@ -457,7 +473,7 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
             else if (row.bundle_hash) { const result = await publicOperation<PublicSubmission>('public-publish', { post_id: row.core.post.id, approve_publication: true });checkSubmission(result);await syncOutbox(); }
             else throw new Error('Recover the original saved browser intent before continuing this unsigned post.');
           })}>Resume exact public post</button>
-          {!row.bundle_hash && <details><summary>Link selected earlier authorship</summary><p>This publicly links only the selected original posts to this exact new post. Unbound old posts and different keys cannot qualify.</p>
+          {!row.bundle_hash && !intents.find(i=>i.post.id===row.core.post.id)?.history && <details><summary>Link selected earlier authorship</summary><p>This publicly links only the selected original posts to this exact new post. Unbound old posts and different keys cannot qualify.</p>
             <label>Earlier post numbers<input value={history} onChange={e => setHistory(e.target.value)} placeholder="1, 2" /></label>
             <label><input type="checkbox" checked={linkConsent} onChange={e => setLinkConsent(e.target.checked)} />I approve linking these selected posts</label>
             <button disabled={busy || !linkConsent} onClick={() => void action(() => attachHistory(row))}>Attach selected authorship proof</button></details>}

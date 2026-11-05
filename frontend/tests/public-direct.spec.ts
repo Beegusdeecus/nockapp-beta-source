@@ -1,5 +1,6 @@
 import { test,expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { storage as intentStorage } from '../src/platform/storage';
 import { publishDirect, publishPublicBundleHash } from '../src/publicDirect';
 import { publicProjection,validPublicBody,PUBLIC_VERSION,type PublicSubmission } from '../src/publicDiscussion';
 const vectors=JSON.parse(readFileSync(new URL('./fixtures/public-native-contract-v6-20261101.json',import.meta.url),'utf8')).vectors;
@@ -9,7 +10,9 @@ const ready={scope,bundle_hash:row.bundle_hash!,calldata:'0xd9caa3d2'+row.bundle
 const payer='0x'+'12'.repeat(20);const txHash='0x'+'34'.repeat(32);
 function harness(changes:Record<string,unknown>={},reply:unknown=ready) {
   const oldChrome=Object.getOwnPropertyDescriptor(globalThis,'chrome');const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
-  const storage:Record<string,unknown>={};const calls:{method:string;params?:unknown[]}[]=[];const native:string[]=[];
+  const oldGet=intentStorage.get;
+  const storage:Record<string,unknown>={};
+  intentStorage.get=async<T>(key:string)=>structuredClone(storage[key]) as T|undefined;const calls:{method:string;params?:unknown[]}[]=[];const native:string[]=[];
   let lock:Promise<unknown>=Promise.resolve();
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:(_key:string,fn:()=>Promise<unknown>)=>{
     const result=lock.then(fn);lock=result.catch(()=>undefined);return result;
@@ -31,6 +34,7 @@ function harness(changes:Record<string,unknown>={},reply:unknown=ready) {
     if(r.method==='eth_sendTransaction')return txHash;throw Error('unexpected wallet request');
   }};
   return {storage,calls,native,provider,close:()=>{
+    intentStorage.get=oldGet;
     for(const [key,old] of [['chrome',oldChrome],['navigator',oldNavigator]] as const)
       if(old)Object.defineProperty(globalThis,key,old);else Reflect.deleteProperty(globalThis,key);
   }};

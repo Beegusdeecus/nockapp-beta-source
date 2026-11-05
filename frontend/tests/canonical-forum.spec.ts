@@ -15,19 +15,19 @@ async function fixture(w:Worker,missingRoot=false,recovery=''){
     const unavailable={...Object.fromEntries(Object.entries(root).filter(([k])=>['bundle_hash','indexed_at','block_number','block_hash','transaction_hash','canonical_indexed'].includes(k))),post_number:'2',state:'content-unavailable',proofs_verified:false};
     const rows=[root,unavailable,reply(3),reply(4),reply(5),reply(6)];
     if(missingRoot){rows[0]={...unavailable,post_number:'1'};for(const r of rows.slice(2))r.relationship_state='unverified';}
-    const state={calls:[] as any[],rows,entries:[] as any[],availableTickets:2,fail:false,hold:false,release:()=>{}};Object.assign(globalThis,{forumFixture:state});
+    const state={calls:[] as any[],rows,entries:[] as any[],availableTickets:2,history:{} as Record<string,any>,exports:{} as Record<string,any>,historyLost:false,fail:false,hold:false,release:()=>{}};Object.assign(globalThis,{forumFixture:state});
     const saved=get('public-prepare');saved.core.post={...reply(7).post,body:'The exact interrupted comment'};saved.core.thread=ref;saved.core.selection={address:false,followers_threshold:null};saved.bundle_hash='0x'+'55'.repeat(32);saved.phase='bundle-saved';
     if(['pending','pending-then-final','unavailable','edited-draft'].includes(recovery))saved.last_attempt={requested_at:Math.floor(Date.now()/1000)};
     if(recovery==='finalized-no-badge')saved.core.selection.followers_threshold=0;
     if(recovery.startsWith('expired')){saved.core.selection.followers_threshold=0;saved.follower_window='expired';state.availableTickets=0;}
-    if(recovery&&recovery!=='lost-reply')state.entries.push(saved);
+    if(recovery&& !['lost-reply','selected-history','lost-history','omit-history','bad-history'].includes(recovery))state.entries.push(saved);
     Object.assign(state,{statusReady:false});
     if(recovery==='edited-draft'){
       const scope=get('public-capabilities').scope;const key=`reply:public-v5:${scope.application}:${scope.contract}:${root.bundle_hash}:root`;
       await chrome.storage.local.set({'nockapp:public:submission-intents:v5':[{scope,draft_key:key,post:saved.core.post,selection:saved.core.selection,thread:ref,references:[],acknowledged:true,released:false}],['draft:'+key]:{title:'',body:'My newer edited draft',credentials:[]}});
     }
     chrome.runtime.connectNative=(()=>{
-      const listeners=new Set<(v:unknown)=>void>();return {onMessage:{addListener:(f:any)=>listeners.add(f),removeListener:(f:any)=>listeners.delete(f)},onDisconnect:{addListener:()=>{},removeListener:()=>{}},disconnect:()=>{},postMessage:(m:any)=>{
+      const listeners=new Set<(v:unknown)=>void>();return {onMessage:{addListener:(f:any)=>listeners.add(f),removeListener:(f:any)=>listeners.delete(f)},onDisconnect:{addListener:()=>{},removeListener:()=>{}},disconnect:()=>{},postMessage:async(m:any)=>{
         state.calls.push(structuredClone(m));let result:any;
         if(m.operation==='public-capabilities'){
           result=get(m.operation);
@@ -41,13 +41,28 @@ async function fixture(w:Worker,missingRoot=false,recovery=''){
           result={...page,posts:numbers.map((n:number)=>state.rows.find(r=>r.post_number===String(n))??{post_number:String(n),state:'unassigned',canonical_indexed:false,proofs_verified:false}),requested_numbers:numbers.map(String),next_number:String(state.rows.length+1),checked_records:numbers.filter((n:number)=>n<=state.rows.length).length};
           if(m.operation==='public-page')Object.assign(result,{after:m.body.after,next_after:m.body.after+numbers.length,more:m.body.after+numbers.length<state.rows.length});
         }else if(m.operation==='public-prepare'){
-          result=get('public-prepare');Object.assign(result.core,{post:m.body.post,selection:m.body.selection,thread:m.body.thread,references:m.body.references});result.phase='prepared';state.entries.push(result);
+          result=get('public-prepare');Object.assign(result.core,{post:m.body.post,selection:m.body.selection,thread:m.body.thread,references:m.body.references});result.phase='prepared';const previous=state.entries.find(r=>r.core.post.id===m.body.post.id);if(previous)result=previous;else state.entries.push(result);
+        }else if(m.operation==='public-attach-history'){
+          result=state.entries.find(r=>r.core.post.id===m.body.post_id);state.history[m.body.post_id]=m.body.records;
+          if(recovery==='lost-history'&&!state.historyLost){state.historyLost=true;queueMicrotask(()=>listeners.forEach(f=>f({profile:m.profile,id:m.id,status:'rejected',code:'native-operation-unavailable',recoverable:true,laboratory:true,verified:false})));return;}
+        }else if(m.operation==='public-export-submission'){
+          result=state.exports[m.body.post_id];
         }else if(m.operation==='public-finish'||m.operation==='public-publish'||m.operation==='public-check'){
           if(m.operation==='public-publish'&&recovery==='expired-no-ticket'){
             queueMicrotask(()=>listeners.forEach(f=>f({profile:m.profile,id:m.id,status:'rejected',code:'publication-ticket-needed',recoverable:true,laboratory:true,verified:false})));return;
           }
           result=state.entries.find(r=>r.core.post.id===m.body.post_id);result.bundle_hash??='0x'+'55'.repeat(32);result.verification_current=m.operation!=='public-finish';
-          if(m.operation==='public-finish')result.phase='bundle-saved';
+          if(m.operation==='public-finish'){
+            result.phase='bundle-saved';
+            if(state.history[m.body.post_id]){
+              const canonical=(v:any):string=>v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canonical).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}';
+              const records=recovery==='omit-history'?[]:state.history[m.body.post_id];
+              const evidence=records.length?btoa(canonical({profile:'nockapp-attached-historical-authorship-v5',records,proof:{synthetic:true}})):null;
+              const bytes=new TextEncoder().encode(canonical({unsigned:{core:result.core,evidence:{history:evidence}},authorship:{synthetic:true}}));
+              result.bundle_hash='0x'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
+              state.exports[m.body.post_id]={profile:'nockapp-public-submission-v5',scope:get('public-capabilities').scope,bundle_hash:result.bundle_hash,bundle_base64:btoa(String.fromCharCode(...bytes)),calldata:'0xd9caa3d2'+result.bundle_hash.slice(2),contains_private_key:false,personal_wallet_required:false};
+            }
+          }
           else if(m.operation==='public-publish'){
             result.phase=recovery==='lost-reply'?'bundle-saved':'submitted';result.last_attempt={requested_at:Math.floor(Date.now()/1000)};
             result.last_known={state:'not-indexed',post_number:null,checked_at:Math.floor(Date.now()/1000)};
@@ -230,4 +245,36 @@ for(const scenario of ['ticket-preflight','expired','expired-no-ticket'])test(`s
       if(scenario==='expired-no-ticket')expect(saved.last_attempt).toBeNull();
     }
   }finally{await c.close();await rm(profile,{recursive:true,force:true});}
+});
+
+for(const mode of ['selected-history','lost-history','omit-history','bad-history'])test(`selected history composer ${mode}`,async()=>{
+  const profile=await mkdtemp(resolve(tmpdir(),'nockapp-history-'));const path=resolve('dist');
+  const c=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,args:[`--disable-extensions-except=${path}`,`--load-extension=${path}`,'--no-sandbox']});
+  try {
+    const w=c.serviceWorkers()[0]??await c.waitForEvent('serviceworker');await fixture(w,false,mode);
+    const p=await c.newPage();await p.goto(`chrome-extension://${new URL(w.url()).host}/forum.html?post=1#post-1`);
+    await p.getByRole('textbox',{name:'Your comment',exact:true}).fill('Selected history stays with this exact post');
+    await p.getByText('Prove earlier authorship',{exact:true}).click();
+    await p.getByLabel('Earlier post numbers',{exact:true}).fill(mode==='bad-history'?'2':'1, 3');
+    await p.getByLabel('I approve linking these selected posts',{exact:true}).check();
+    await p.getByRole('button',{name:'Publish anonymous public comment',exact:true}).click();
+    if(mode==='bad-history'){
+      await expect(p.getByText('An earlier post is unavailable or invalid.',{exact:false})).toBeVisible();
+      const calls=await w.evaluate(()=>(globalThis as any).forumFixture.calls);expect(calls.some((r:any)=>r.operation==='public-prepare')).toBe(false);return;
+    }
+    if(mode==='lost-history'){
+      await expect(p.getByText('The selected authorship proof could not be prepared.',{exact:false})).toBeVisible();
+      const before=await w.evaluate(()=>(globalThis as any).forumFixture.calls.length);await p.reload();
+      await expect(p.getByRole('button',{name:'Publish this comment',exact:true})).toBeVisible();
+      expect((await w.evaluate(()=>(globalThis as any).forumFixture.calls)).slice(before).some((r:any)=>['public-attach-history','public-publish'].includes(r.operation))).toBe(false);
+      await p.getByRole('button',{name:'Publish this comment',exact:true}).click();
+    }
+    if(mode==='omit-history')await expect(p.getByText('The selected authorship links do not match the saved post.',{exact:false})).toBeVisible();
+    else await expect(p.getByText('Publishing: waiting for finalized inclusion.',{exact:false})).toBeVisible();
+    const calls=await w.evaluate(()=>(globalThis as any).forumFixture.calls);const claims=calls.filter((r:any)=>r.operation==='public-attach-history');
+    expect(claims).toHaveLength(mode==='lost-history'?2:1);expect(claims[0].body.records.map((r:any)=>r.number)).toEqual(['1','3']);
+    if(mode==='lost-history')expect(claims[0].body).toEqual(claims[1].body);
+    expect(calls.filter((r:any)=>r.operation==='public-publish')).toHaveLength(mode==='omit-history'?0:1);
+    expect(calls.filter((r:any)=>r.operation==='public-export-submission')).toHaveLength(1);
+  } finally {await c.close();await rm(profile,{recursive:true,force:true});}
 });

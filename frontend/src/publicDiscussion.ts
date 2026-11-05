@@ -8,7 +8,7 @@ import { validRefundState, validRefundResult } from './publicRefunds';
 import { validArchive, validArchiveCapabilities, validArchiveExport, validArchiveRestore, validArchiveStatus } from './publicContentArchive';
 import { validBulkPurchase } from './bulkTickets';
 export const PUBLIC_PORT = 'nockapp-permissionless-discussion';
-export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-10';
+export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-11';
 const NATIVE = 'nockapp-zkid-public-post-native-v1';
 const integer = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
 const hex = (v: unknown, size = 64): v is string => typeof v === 'string' && new RegExp(`^[0-9a-f]{${size}}$`).test(v) && !/^0+$/.test(v);
@@ -414,7 +414,7 @@ let queue: Promise<unknown> = Promise.resolve();
 export class PublicOperationError extends Error {
   constructor(readonly code:string,message:string){super(message);}
 }
-export function publicOperation<T = unknown>(operation: PublicOperation, supplied: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
+function rawPublicOperation<T = unknown>(operation: PublicOperation, supplied: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
   const body = structuredClone(supplied);
   const run = () => new Promise<T>((resolve, reject) => {
     try { if (!validPublicBody(operation, body) || signal?.aborted) throw new Error(); } catch { reject(new Error('Invalid or cancelled public operation.'));return; }
@@ -446,4 +446,24 @@ export function publicOperation<T = unknown>(operation: PublicOperation, supplie
     } catch { done(undefined, 'The configured public helper is unavailable.'); }
   });
   const result = queue.then(run);queue = result.catch(() => undefined);return result;
+}
+
+// Check selected links against the actual frozen public bytes before any publish
+// or wallet authorization. No signing or publishing is performed by this check.
+export async function publicOperation<T = unknown>(operation: PublicOperation, supplied: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
+  const body = structuredClone(supplied);
+  if (!['public-publish','public-direct-ready','public-export-submission','public-wallet-request'].includes(operation)) return rawPublicOperation<T>(operation,body,signal);
+  if (!validPublicBody(operation,body) || signal?.aborted) throw Error('Invalid or cancelled public operation.');
+  const { publicIntents } = await import('./data/publicIntents');
+  const intent = (await publicIntents()).find(r => r.post.id === body.post_id);
+  if (!intent?.history) return rawPublicOperation<T>(operation,body,signal);
+  const { assertHistoryExport, assertHistoryBinding } = await import('./publicHistory');
+  if (operation === 'public-publish' || operation === 'public-direct-ready') {
+    const exported = await rawPublicOperation<PublicExport>('public-export-submission',{post_id:body.post_id,approve_public_export:true},signal);
+    await assertHistoryExport(intent,exported);
+  }
+  const result = await rawPublicOperation<T>(operation,body,signal);
+  if (operation === 'public-export-submission') await assertHistoryExport(intent,result as PublicExport);
+  if (operation === 'public-wallet-request') assertHistoryBinding(intent,(result as {binding:unknown}).binding);
+  return result;
 }

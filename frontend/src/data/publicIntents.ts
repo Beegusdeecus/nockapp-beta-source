@@ -2,14 +2,20 @@
 import { exclusive, storage } from '../platform/storage';
 import { object, exact } from '../zkidWire';
 import { canonicalAscii } from '../authoredWallet';
-import { validPublicBody, validPublicScope, type PublicPost, type PublicReference, type PublicSelection, type PublicScope } from '../publicDiscussion';
+import { validPublicBody, validPublicScope, validPublicReference, type PublicPost, type PublicReference, type PublicSelection, type PublicScope } from '../publicDiscussion';
 export const PUBLIC_INTENTS_KEY = 'nockapp:public:submission-intents:v5';
+export type PublicHistoryPlan = { profile: 'nockapp-public-history-plan-v1'; records: PublicReference[]; approve_linking: true };
 export type PublicIntent = { scope: PublicScope; draft_key: string; post: PublicPost; selection: PublicSelection; thread: PublicReference | null;
-  references: PublicReference[]; acknowledged: boolean; released: boolean };
+  references: PublicReference[]; acknowledged: boolean; released: boolean; history?: PublicHistoryPlan };
 const validKey = (v: unknown): v is string => typeof v === 'string' && /^(thread|reply):public-v5:/.test(v) && v.length <= 1024;
 export function intentBody(v: PublicIntent) { return { post: v.post, selection: v.selection, thread: v.thread, references: v.references, approve_publication: true }; }
 function valid(v: unknown): v is PublicIntent {
-  return object(v) && exact(v, ['scope', 'draft_key', 'post', 'selection', 'thread', 'references', 'acknowledged', 'released'])
+  return object(v) && exact(v, ['scope', 'draft_key', 'post', 'selection', 'thread', 'references', 'acknowledged', 'released', ...(v.history === undefined ? [] : ['history'])])
+    && (v.history === undefined || object(v.history) && exact(v.history, ['profile','records','approve_linking'])
+      && v.history.profile === 'nockapp-public-history-plan-v1' && v.history.approve_linking === true
+      && Array.isArray(v.history.records) && v.history.records.length >= 1 && v.history.records.length <= 15
+      && v.history.records.every(r => validPublicReference(r, true) && object(v.scope) && r.protocol === v.scope.protocol && r.chain_id === v.scope.chain_id && r.contract === v.scope.contract && r.number !== null)
+      && new Set(v.history.records.map(r => r.number)).size === v.history.records.length)
     && validPublicScope(v.scope) && validKey(v.draft_key) && typeof v.acknowledged === 'boolean' && typeof v.released === 'boolean'
     && !(v.released && !v.acknowledged) && Array.isArray(v.references)
     && (v.thread === null || object(v.thread) && v.thread.contract === v.scope.contract && v.thread.chain_id === v.scope.chain_id)
@@ -30,7 +36,7 @@ export function preparePublicIntent(value: PublicIntent): Promise<PublicIntent> 
     const rows = await publicIntents();const old = rows.find(r => r.draft_key === captured.draft_key && samePublicScope(r.scope, captured.scope) && !r.released);
     if (old) {
       const normalized = { ...captured, post: { ...captured.post, id: old.post.id, created_at: old.post.created_at } };
-      if (canonicalAscii(intentBody(normalized)) !== canonicalAscii(intentBody(old))) throw new Error('Recover the saved post, then choose Use edited draft. Your edits are preserved.');
+      if (canonicalAscii({ ...intentBody(normalized), history: normalized.history ?? null }) !== canonicalAscii({ ...intentBody(old), history: old.history ?? null })) throw new Error('Recover the saved post, then choose Use edited draft. Your edits are preserved.');
       return structuredClone(old);
     }
     if (rows.length >= 40 || rows.some(r => r.post.id === captured.post.id)) throw new Error('Public submission storage is full or this identifier already exists. Saved data is preserved.');

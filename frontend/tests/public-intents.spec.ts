@@ -39,3 +39,13 @@ test('oversized native payload or private fields reject before persisting an unr
   await expect(preparePublicIntent({ ...intent(), post: { ...intent().post, secret: 'forbidden' } } as unknown as PublicIntent)).rejects.toThrow('Invalid public intent');
   expect(values.has(PUBLIC_INTENTS_KEY)).toBe(false);
 }));
+test('selected history requires scoped consent and preserves its exact choices across recovery', async () => isolated(async values => {
+  const v=intent();const ref={protocol:5 as const,chain_id:84532 as const,contract:v.scope.contract,number:'1',bundle_hash:'0x'+'ab'.repeat(32)};
+  v.history={profile:'nockapp-public-history-plan-v1',records:[ref],approve_linking:true};
+  const first=await preparePublicIntent(v);expect((await publicIntents())[0].history).toEqual(v.history);
+  for(const history of [undefined,{...v.history,approve_linking:false},{...v.history,records:[]},{...v.history,records:[ref,ref]},
+    {...v.history,records:[{...ref,contract:'0x'+'56'.repeat(20)}]},{...v.history,records:[{...ref,number:'2'}]}]){
+    await expect(preparePublicIntent({...intent(),history} as PublicIntent)).rejects.toThrow();
+  }
+  expect((await publicIntents())[0]).toEqual(first);expect(values.get(PUBLIC_INTENTS_KEY)).toEqual([first]);
+}));

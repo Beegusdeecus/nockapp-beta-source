@@ -130,7 +130,7 @@ test('disconnect releases global public operation ownership and drops late repli
 });
 // Built background is also checked in background.spec.ts; constant is pinned here.
 test('public port is a distinct protocol, with no reinterpretation of v4 traffic', () => {
-  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-10');
+  expect(PUBLIC_PORT).toBe('nockapp-permissionless-discussion');expect(PUBLIC_VERSION).toBe('nockapp-permissionless-discussion-11');
 });
 
 test('actual cursor-page vectors preserve empty ranges and cannot skip or invent allocations', () => {
