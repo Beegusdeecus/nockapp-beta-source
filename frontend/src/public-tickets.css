@@ -2,6 +2,7 @@
 .ticket-wallet section { margin-block: 20px; }
 .ticket-wallet label { display: block; margin-block: 12px; }
 .ticket-wallet input:not([type="checkbox"]) { display: block; width: 100%; box-sizing: border-box; }
+.ticket-wallet select { display: block; width: 100%; margin-top: 6px; padding: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
 .ticket-wallet button { margin: 6px 6px 6px 0; }
 .ticket-wallet { max-width: 680px; padding: 28px 22px; line-height: 1.55; }
 .ticket-wallet h1 { font-size: 1.8rem; margin-bottom: 8px; }

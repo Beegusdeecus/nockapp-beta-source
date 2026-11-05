@@ -10,8 +10,10 @@ import './tokens.css';
 import './styles.css';
 import './public-tickets.css';
 import { validateRefundState, validateRefundResult, type RefundState } from './publicRefunds';
+import { BulkTicketPurchase } from './components/BulkTicketPurchase';
 
 function Tickets() {
+  const [bulkEnabled,setBulkEnabled]=useState(false);const [quantity,setQuantity]=useState('50');const [bulkActive,setBulkActive]=useState(false);
   const [offer,setOffer]=useState<TicketOffer>();const [pending,setPending]=useState<TicketPending>();
   const [refundState,setRefundState]=useState<RefundState>();const [refundVerified,setRefundVerified]=useState(false);
   const [quote,setQuote]=useState<PaymentQuote>();const [feeLimit,setFeeLimit]=useState('');const [hash,setHash]=useState('');
@@ -25,13 +27,14 @@ function Tickets() {
   const [updateRequired,setUpdateRequired]=useState(false);const [progressReason,setProgressReason]=useState('');
   const [busy,setBusy]=useState(false);const locked=useRef(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
   async function load() {
-    const caps=await publicOperation<{scope:PublicScope;refund_payout_configured?:boolean}>('public-capabilities');
+    const caps=await publicOperation<{scope:PublicScope;refund_payout_configured?:boolean;verifier_release:number}>('public-capabilities');
     const next=await validateTicketOffer(await publicOperation('public-ticket-offer'),caps.scope);
     const state=await publicOperation<TicketPending>('public-ticket-pending');
     if(state.purchase)validateTicketPurchase(state.purchase,next);
     const refunds=caps.refund_payout_configured===true?await validateRefundState(await publicOperation('public-ticket-refund-state'),next,state):undefined;
     const counts=await publicOperation<{available:number;reserved:number;purchase_pending:boolean}>('public-ticket-status');
     setInventory(counts);setNeedsReload(false);setUpdateRequired(false);
+    setBulkEnabled(caps.verifier_release>=11);
     setRefundState(refunds);
     setOffer(next);setPending(state);setQuote(undefined);setFeeConsent(false);return {offer:next,pending:state,inventory:counts,refunds};
   }
@@ -185,6 +188,7 @@ function Tickets() {
     }finally{await load();}
   }
   const p=pending?.purchase;const intent=pending?.payment_intent;const t=offer?.manifest.terms;
+  const showBulk=bulkEnabled&&quantity==='50'&&!p&&!refundState?.pending;
   const currentProgress=paymentProgress?.pack_hash===p?.pack_hash?paymentProgress:undefined;
   const ready=!!inventory&&!p&&inventory.available>0&&!needsReload;
   const completed=ready||refundVerified?4:currentProgress?.state==='finalized'?3:currentProgress?.state==='confirming'?2:p?1:0;
@@ -204,24 +208,27 @@ function Tickets() {
   </section>;
   return <main className="wallet-authorization ticket-wallet"><h1>Publication tickets</h1>
     <p>Buy a pack to publish anonymously. Your paying wallet is public on Base Sepolia; no Twitter account is needed to buy.</p>
-    {t&&<section className="ticket-price" aria-label="Shared ticket offer"><strong>{t.pack_size} tickets · {formatEth(t.pack_price_wei)} test ETH</strong><p>Plus network fees. Use tickets before {new Date(t.redeem_before*1000).toLocaleString('en-AU',{timeZone:'Australia/Brisbane',timeZoneName:'short'})}.</p></section>}
-    <section className="ticket-progress" aria-label="Ticket purchase progress" aria-busy={busy}>
+    {bulkEnabled&&!p&&!refundState?.pending&&<label>Tickets to buy<select value={quantity} disabled={bulkActive||busy} onChange={e=>setQuantity(e.target.value)}><option value="50">50 tickets in one payment</option><option value="2">2 tickets</option></select></label>}
+    {showBulk&&offer&&<BulkTicketPurchase offer={offer} onActive={setBulkActive} canRefund={!!refundState} onRefresh={()=>void run(async()=>{await load();},'Refreshing your ticket inventory…')}/>}
+    {showBulk&&refundState&&<p>The shared refund reserve is capped at {formatEth(refundState.policy.principal_budget_wei)} ETH across at most {refundState.policy.max_refunds} packs. It may not cover your whole purchase; funding and payout are not guaranteed.</p>}
+    {!showBulk&&t&&<section className="ticket-price" aria-label="Shared ticket offer"><strong>{t.pack_size} tickets · {formatEth(t.pack_price_wei)} test ETH</strong><p>Plus network fees. Use tickets before {new Date(t.redeem_before*1000).toLocaleString('en-AU',{timeZone:'Australia/Brisbane',timeZoneName:'short'})}.</p></section>}
+    {!showBulk&&<section className="ticket-progress" aria-label="Ticket purchase progress" aria-busy={busy}>
       <ol><li>Review</li><li>Pay</li><li>Finalize</li><li>Tickets ready</li></ol>
       <progress max={4} value={busy||!offer&&!error?undefined:completed} aria-label="Ticket purchase completion"/>
       <p role="status">{summary}</p>
       {hasPaymentAttempt&&currentProgress&&<p className="ticket-blocks">Finalized block {currentProgress.finalized_block.toLocaleString()} · Latest block {currentProgress.latest_block.toLocaleString()}
         {currentProgress.payment_block!==null&&<> · Payment block {currentProgress.payment_block.toLocaleString()} ({(currentProgress.payment_block-currentProgress.finalized_block).toLocaleString()} blocks ahead of the finalized checkpoint)</>}</p>}
       {hasPaymentAttempt&&<p>Chain status updates automatically every 30 seconds while this page is visible. Finality advances in batches; there is no fixed countdown.</p>}
-    </section>
+    </section>}
     {error&&<p role="alert">{error}</p>}{notice&&<p className="ticket-notice">{notice}</p>}
     {inventory&&<p>{inventory.available} available · {inventory.reserved} assigned to posts <span>(includes completed posts)</span></p>}
     {updateRequired?<button className="primary" disabled={busy} onClick={()=>api().runtime.reload()}>Reload NockApp extension</button>
       :needsReload&&<button className="primary" disabled={busy} onClick={()=>void run(refresh,'Checking the saved purchase without a wallet action…')}>Check saved purchase</button>}
     {!needsReload&&ready&&<>
       <button className="primary" disabled={busy} onClick={()=>void run(async()=>{const tab=await api().tabs.getCurrent();if(tab?.id!==undefined)await api().tabs.remove(tab.id);},'Returning to NockApp…')}>Back to NockApp</button>
-      <details><summary>Buy another pack</summary>{!quote&&purchaseControls}</details>
+      {!showBulk&&<details><summary>Buy another pack</summary>{!quote&&purchaseControls}</details>}
     </>}
-    {!needsReload&&offer&&pending&&!ready&&!hasPaymentAttempt&&!quote&&purchaseControls}
+    {!showBulk&&!needsReload&&offer&&pending&&!ready&&!hasPaymentAttempt&&!quote&&purchaseControls}
     {!needsReload&&p&&hasPaymentAttempt&&!quote&&!refundState?.pending&&<section aria-label="Finish saved purchase">
       <p>This finishes only your saved pack. It verifies the payment and imports the paid tickets; it does not open MetaMask or send another payment. Issuance permanently prevents cancellation of this pack.</p>
       <button className="primary" disabled={busy||finishing} onClick={()=>{setError('');setFinishing(true);setRefreshProgress(n=>n+1);}}>{finishing?'Finishing automatically…':'Get my tickets'}</button>

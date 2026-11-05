@@ -6,8 +6,9 @@ import { validPublicWalletShape } from './publicWallet';
 import { validTicketOffer, validTicketPending, validArmedPurchase, validTicketAnchor, validClosedAttempt, validTicketRefundReply } from './publicTickets';
 import { validRefundState, validRefundResult } from './publicRefunds';
 import { validArchive, validArchiveCapabilities, validArchiveExport, validArchiveRestore, validArchiveStatus } from './publicContentArchive';
+import { validBulkPurchase } from './bulkTickets';
 export const PUBLIC_PORT = 'nockapp-permissionless-discussion';
-export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-9';
+export const PUBLIC_VERSION = 'nockapp-permissionless-discussion-10';
 const NATIVE = 'nockapp-zkid-public-post-native-v1';
 const integer = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
 const hex = (v: unknown, size = 64): v is string => typeof v === 'string' && new RegExp(`^[0-9a-f]{${size}}$`).test(v) && !/^0+$/.test(v);
@@ -44,6 +45,8 @@ export type PublicOperation = 'public-capabilities' | 'public-identity-options' 
   | 'public-archive-capabilities' | 'public-archive-export-object' | 'public-archive-import-object' | 'public-archive-cache-status'
   | 'public-source-status' | 'public-source-finality' | 'public-source-begin' | 'public-source-check-post' | 'public-source-recover' | 'public-source-cancel'
   | 'public-ticket-status' | 'public-ticket-prepare' | 'public-ticket-payment' | 'public-ticket-recover'
+  | 'public-ticket-bulk-status' | 'public-ticket-bulk-prepare' | 'public-ticket-bulk-arm' | 'public-ticket-bulk-progress' | 'public-ticket-bulk-recover'
+  | 'public-ticket-bulk-resume' | 'public-ticket-bulk-refund'
   | 'public-ticket-offer' | 'public-ticket-pending' | 'public-ticket-arm' | 'public-ticket-intent' | 'public-ticket-find' | 'public-ticket-progress' | 'public-ticket-close-attempt'
   | 'public-ticket-refund-request' | 'public-ticket-refund-result'
   | 'public-ticket-refund-state' | 'public-ticket-refund-status' | 'public-ticket-refund-recover'
@@ -81,6 +84,12 @@ export function validPublicCore(v: unknown): v is PublicCore {
     && new Set(v.references.map(canonicalAscii)).size === v.references.length && bounded(v, 16384);
 }
 export function validPublicBody(op: string, b: Record<string, unknown>): boolean {
+  if(op==='public-ticket-bulk-status')return exact(b,[]);
+  if(op==='public-ticket-bulk-prepare')return exact(b,['ticket_count','approve_purchase'])&&b.ticket_count===50&&b.approve_purchase===true;
+  if(op==='public-ticket-bulk-arm')return exact(b,['batch_id','payer','approve_payment'])&&hex(b.batch_id)&&address(b.payer)&&b.approve_payment===true;
+  if(op==='public-ticket-bulk-progress')return exact(b,['batch_id'])&&hex(b.batch_id);
+  if(['public-ticket-bulk-recover','public-ticket-bulk-resume'].includes(op))return exact(b,['batch_id','approve_import'])&&hex(b.batch_id)&&b.approve_import===true;
+  if(op==='public-ticket-bulk-refund')return exact(b,['batch_id','approve_refund_preparation'])&&hex(b.batch_id)&&b.approve_refund_preparation===true;
   if(op==='public-archive-capabilities')return exact(b,[]);
   if(op==='public-archive-export-object')return exact(b,['number','bundle_hash','approve_public_export'])&&integer(b.number,1)&&hash(b.bundle_hash)&&b.approve_public_export===true;
   if(op==='public-archive-import-object')return exact(b,['archive','approve_public_import'])&&b.approve_public_import===true&&validArchive(b.archive,1);
@@ -209,6 +218,19 @@ export function publicProjection(op: string, v: unknown, b: Record<string, unkno
   }
   if(op==='public-archive-cache-status')return validArchiveStatus(v)&&canonicalAscii(v.bundle_hashes)===canonicalAscii(b.bundle_hashes);
   if (!object(v)) return false;
+  if(op==='public-ticket-bulk-progress'){
+    if(v.batch_id!==b.batch_id)return false;
+    const {batch_id,...rest}=v;
+    return exact(v,['profile','pack_hash','state','latest_block','finalized_block','payment_block','batch_id'])
+      &&publicProjection('public-ticket-progress',rest,{pack_hash:rest.pack_hash});
+  }
+  if(op.startsWith('public-ticket-bulk-')){
+    if(!validBulkPurchase(v))return false;
+    if(v.phase==='none')return op==='public-ticket-bulk-status';
+    if(op==='public-ticket-bulk-arm')return v.batch_id===b.batch_id&&v.payer===b.payer&&v.dispatch_authorized===true;
+    return !('dispatch_authorized'in v)&&(op==='public-ticket-bulk-status'||op==='public-ticket-bulk-prepare'
+      ||['public-ticket-bulk-recover','public-ticket-bulk-resume','public-ticket-bulk-refund'].includes(op)&&v.batch_id===b.batch_id);
+  }
   if (op==='public-ticket-progress')return exact(v,['profile','pack_hash','state','latest_block','finalized_block','payment_block'])
     && v.profile==='nockapp-ticket-payment-progress-v1' && hash(v.pack_hash) && v.pack_hash===b.pack_hash
     && integer(v.latest_block) && integer(v.finalized_block) && v.finalized_block<=v.latest_block
@@ -260,9 +282,9 @@ export function publicProjection(op: string, v: unknown, b: Record<string, unkno
   if (op === 'public-wallet-request') return validPublicWalletShape(v) && v.post_id === b.post_id && v.address === b.address;
   if (['public-wallet-result','public-wallet-finish','public-wallet-recover','public-wallet-reset'].includes(op)) return validPublicSubmission(v) && v.core.post.id === b.post_id
     && (op === 'public-wallet-reset' ? v.bundle_hash === null : v.bundle_hash !== null) && v.verification_current === false;
-  if (op === 'public-capabilities') return exact(v, ['configured', 'protocol', 'scope', 'follower_proof_configured', 'verifier_release', 'anonymous_ticket_packs', 'source_enrollment_configured', 'historical_issuer_views',...([7,9,10].includes(Number(v.verifier_release))?['refund_payout_configured']:[]),...([8,9,10].includes(Number(v.verifier_release))?['publication_mode']:[])])
+  if (op === 'public-capabilities') return exact(v, ['configured', 'protocol', 'scope', 'follower_proof_configured', 'verifier_release', 'anonymous_ticket_packs', 'source_enrollment_configured', 'historical_issuer_views',...([7,9,10,11].includes(Number(v.verifier_release))?['refund_payout_configured']:[]),...([8,9,10,11].includes(Number(v.verifier_release))?['publication_mode']:[])])
     && v.configured === true && v.protocol === 5 && validPublicScope(v.scope)
-    && ([9,10].includes(v.verifier_release as number) ? ['direct','tickets'].includes(String(v.publication_mode)) && v.anonymous_ticket_packs === (v.publication_mode === 'tickets')
+    && ([9,10,11].includes(v.verifier_release as number) ? ['direct','tickets'].includes(String(v.publication_mode)) && v.anonymous_ticket_packs === (v.publication_mode === 'tickets')
       && v.follower_proof_configured === true && v.source_enrollment_configured === true && v.historical_issuer_views === true
       && typeof v.refund_payout_configured === 'boolean' && (!v.refund_payout_configured || v.publication_mode === 'tickets')
       : v.verifier_release === 8 ? v.publication_mode === 'direct' && v.anonymous_ticket_packs === false

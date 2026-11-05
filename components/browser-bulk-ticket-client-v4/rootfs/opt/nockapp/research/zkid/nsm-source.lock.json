@@ -1,0 +1,7 @@
+{
+  "archive_bytes": 59340,
+  "archive_sha256": "9b0d458000405e8877c1ccca7a74ecc8aa1baea9bac237caee5ff7bad0d86ec9",
+  "archive_url": "https://codeload.github.com/aws/aws-nitro-enclaves-nsm-api/tar.gz/4bf743e17f9b4174cc16a4ed743086ca6e541405",
+  "commit": "4bf743e17f9b4174cc16a4ed743086ca6e541405",
+  "repository": "https://github.com/aws/aws-nitro-enclaves-nsm-api"
+}
