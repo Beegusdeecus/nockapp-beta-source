@@ -1,0 +1,25 @@
+{
+  "language": "Solidity",
+  "settings": {
+    "evmVersion": "prague",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.immutableReferences"
+        ]
+      }
+    }
+  },
+  "sources": {
+    "PublicCommitmentIndex.sol": {
+      "content": "// SPDX-License-Identifier: Apache-2.0\npragma solidity 0.8.30;\n\n/// Permissionless SHA-256 commitment log. Inclusion is NOT proof validation.\n/// No caller, UUID, thread hint or issuer can reserve another bundle's identity.\n/// Canonical numbers identify exact bytes; clients establish their meaning.\ncontract PublicCommitmentIndex {\n    uint256 public constant INDEX_VERSION = 1;\n    bytes32 public immutable application;\n    uint64 public nextPostNumber = 1;\n\n    struct Record {\n        uint64 number;\n        uint64 blockNumber;\n        uint64 indexedAt;\n    }\n    mapping(bytes32 => Record) public records;\n    mapping(uint64 => bytes32) public bundleHashes;\n    event Indexed(bytes32 indexed bundleHash, uint64 indexed postNumber, uint64 indexedAt);\n\n    constructor(bytes32 app) {\n        require(app != bytes32(0), \"application\");\n        application = app;\n    }\n\n    /// Any fee payer may submit. A copied exact bundle resolves to the SAME No.\n    /// No signature or claim supplied by the fee payer conveys authorship.\n    function submit(bytes32 bundleHash) external returns (uint64 number) {\n        require(bundleHash != bytes32(0), \"bundle-hash\");\n        number = records[bundleHash].number;\n        if (number != 0) return number;\n        require(nextPostNumber < 2**53 && block.number <= type(uint64).max\n            && block.timestamp <= type(uint64).max, \"record-limit\");\n        number = nextPostNumber++;\n        records[bundleHash] = Record(number, uint64(block.number), uint64(block.timestamp));\n        bundleHashes[number] = bundleHash;\n        emit Indexed(bundleHash, number, uint64(block.timestamp));\n    }\n}\n"
+    }
+  }
+}

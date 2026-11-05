@@ -70,10 +70,18 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
       await page.getByRole('button',{name:'Pay for 50 tickets in MetaMask',exact:true}).click();
       if(mode==='lost-import'){await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'Check saved payment',exact:true}).click();}
     }
-    await expect(page.getByRole('status')).toContainText('50 tickets ready');
+    await expect(page.getByRole('status')).toContainText('Purchase complete. 50 tickets imported.');
     await expect(page.getByRole('progressbar',{name:'50-ticket purchase completion'})).toHaveAttribute('value','4');
     const wallet=await page.evaluate(()=>(globalThis as any).bulkWalletCalls);expect(wallet.filter((r:any)=>r.method==='wallet_sendCalls')).toHaveLength(mode==='saved-armed'?0:1);
     expect(wallet.some((r:any)=>r.method==='eth_sendTransaction')).toBe(false);
     const native=await worker.evaluate(()=>(globalThis as any).bulkTest.calls);expect(native.filter((r:any)=>r.operation==='public-ticket-bulk-arm')).toHaveLength(mode==='saved-armed'?0:1);
+    // A completed purchase is historical. Spending its tickets must not turn
+    // that receipt into a claim that 50 are still available, or repay it.
+    await worker.evaluate(()=>{(globalThis as any).bulkTest.available=0;});
+    await page.reload();
+    await expect(page.getByRole('status')).toContainText('50 tickets imported');
+    await expect(page.getByText('0 available · 6 assigned to posts')).toBeVisible();
+    await expect(page.getByRole('button',{name:'Pay for 50 tickets in MetaMask',exact:true})).toHaveCount(0);
+    expect((await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).filter((r:any)=>r.method==='wallet_sendCalls')).toHaveLength(0);
   }finally{await context.close();await rm(profile,{recursive:true,force:true});}
 });

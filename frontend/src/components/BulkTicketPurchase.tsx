@@ -75,9 +75,9 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false}:{o
   return <section aria-label="Buy 50 publication tickets">
     <section className="ticket-price"><strong>50 tickets · {formatEth(price)} test ETH</strong><p>One payment, plus the network fee shown in MetaMask. Use tickets before {new Date(offer.manifest.terms.redeem_before*1000).toLocaleString('en-AU',{timeZone:'Australia/Brisbane',timeZoneName:'short'})}.</p></section>
     <section className="ticket-progress" aria-label="50-ticket purchase progress" aria-busy={busy}>
-      <ol><li>Review</li><li>Pay once</li><li>Finalize</li><li>50 tickets ready</li></ol>
+      <ol><li>Review</li><li>Pay once</li><li>Finalize</li><li>Imported</li></ol>
       <progress max={4} value={!loaded?undefined:stage} aria-label="50-ticket purchase completion"/>
-      <p role="status">{complete?`${saved!.imported_tickets} tickets ready.${saved!.refunded_tickets?` ${saved!.refunded_tickets} tickets refunded.`:''} Return to your comment.`:saved?.phase==='paused'?'Ticket import paused. Finish the saved refund, or explicitly continue the remaining tickets.':paid?`Payment finalized. ${saved!.imported_tickets} of 50 tickets imported.`:saved?.phase==='armed'?chain?.state==='confirming'?'Payment found. Waiting for chain finality; do not pay again.':status:status}</p>
+      <p role="status">{complete?`Purchase complete. ${saved!.imported_tickets} tickets imported.${saved!.refunded_tickets?` ${saved!.refunded_tickets} tickets refunded.`:''} Current available tickets are shown below.`:saved?.phase==='paused'?'Ticket import paused. Finish the saved refund, or explicitly continue the remaining tickets.':paid?`Payment finalized. ${saved!.imported_tickets} of 50 tickets imported.`:saved?.phase==='armed'?chain?.state==='confirming'?'Payment found. Waiting for chain finality; do not pay again.':status:status}</p>
       {saved?.phase==='armed'&&chain&&<p>Finalized block {chain.finalized_block.toLocaleString()} · Latest block {chain.latest_block.toLocaleString()}. Checks update automatically every 30 seconds while this page is visible.</p>}
     </section>
     {error&&<p role="alert">{error}</p>}
