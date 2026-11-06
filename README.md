@@ -87,3 +87,5 @@ UI recovery audit: new wallet batch replies retain their tracking ID across relo
 Payment compatibility correction: the existing50-ticket request contains25calls; installed MetaMask transaction-controller default limit is10. Remote overrides may differ, and atomic capability alone does not establish batch-size support. New50-ticket checkout is disabled pending a versioned one-call contract/offer/service upgrade. Existing pending purchases, tickets and exact receipt recovery are preserved. Untracked missing payment is investigation, not finality progress; its public diagnostic can be copied in-app. Future wallet library requests commit an app-chosen ID before dispatch. No real50-ticket purchase, upgrade deployment or full beta acceptance is claimed.
 
 Index-first delivery and explicit one-call checkout source are in review/index-first-one-call. See evidence/index-first-one-call-v1.json for exact tested versions and remaining deployment/acceptance limits.
+
+A source-only, unactivated two-offer service candidate is in review/two-offer-v5 and components/two-offer-services-v5. See evidence/two-offer-services-v5.json for checks and remaining review/acceptance gates.
