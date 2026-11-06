@@ -5,6 +5,15 @@ import { validateTicketOffer, validateTicketPurchase, validTicketPending, quoteT
 import { publicProjection, validPublicBody, attachPublicDiscussion, PUBLIC_VERSION } from '../src/publicDiscussion';
 import type { WalletProvider } from '../src/publicWallet';
 const f=JSON.parse(readFileSync(new URL('./fixtures/public-tickets-v6-20261101.json',import.meta.url),'utf8'));
+test('migrated native status preserves initialized legacy tickets without weakening projection checks',()=>{
+  const v=JSON.parse(readFileSync(new URL('./fixtures/migrated-ticket-status-v1.json',import.meta.url),'utf8'));
+  expect(v.synthetic_only).toBe(true);
+  expect(publicProjection('public-ticket-status',v.migrated)).toBe(true);
+  expect(publicProjection('public-ticket-status',v.fresh)).toBe(true);
+  expect(publicProjection('public-ticket-status',v.previous_inconsistent_projection)).toBe(false);
+  const missingProfile={...v.migrated};delete missingProfile.profile;
+  expect(publicProjection('public-ticket-status',missingProfile)).toBe(false);
+});
 function provider(changes:Record<string,unknown>={}) {
   const calls:{method:string;params?:unknown[]}[]=[];
   const p:WalletProvider={request:async r=>{

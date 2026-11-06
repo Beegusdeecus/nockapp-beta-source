@@ -1,0 +1,47 @@
+{
+  "fresh": {
+    "available": 0,
+    "can_purchase": true,
+    "can_redeem": true,
+    "initialized": false,
+    "pack_price_wei": "10000",
+    "pack_size": 2,
+    "prepaid_custody": true,
+    "purchase_before": 1793012200,
+    "purchase_pending": false,
+    "redeem_before": 1793021200,
+    "refund_policy": "unissued-only-durable-decision-v1",
+    "reserved": 0
+  },
+  "migrated": {
+    "available": 0,
+    "can_purchase": false,
+    "can_redeem": true,
+    "initialized": true,
+    "pack_price_wei": "10000",
+    "pack_size": 2,
+    "prepaid_custody": true,
+    "profile": "nockapp-protected-ticket-wallet-v1",
+    "purchase_before": 1793012200,
+    "purchase_pending": true,
+    "redeem_before": 1793021200,
+    "refund_policy": "unissued-only-durable-decision-v1",
+    "reserved": 6
+  },
+  "native_operation": "public-ticket-status",
+  "previous_inconsistent_projection": {
+    "available": 0,
+    "can_purchase": true,
+    "can_redeem": true,
+    "initialized": false,
+    "pack_price_wei": "10000",
+    "pack_size": 2,
+    "prepaid_custody": true,
+    "purchase_before": 1793012200,
+    "purchase_pending": true,
+    "redeem_before": 1793021200,
+    "refund_policy": "unissued-only-durable-decision-v1",
+    "reserved": 6
+  },
+  "synthetic_only": true
+}

@@ -15,13 +15,14 @@ import { BulkTicketPurchase } from './components/BulkTicketPurchase';
 
 function Tickets() {
   const [helperRelease,setHelperRelease]=useState(0);const [bulkState,setBulkState]=useState<BulkPurchase>();
+  const [legacyBlocked,setLegacyBlocked]=useState(false);
   const [bulkEnabled,setBulkEnabled]=useState(false);const [quantity,setQuantity]=useState('50');const [bulkActive,setBulkActive]=useState(false);
   const [offer,setOffer]=useState<TicketOffer>();const [pending,setPending]=useState<TicketPending>();
   const [refundState,setRefundState]=useState<RefundState>();const [refundVerified,setRefundVerified]=useState(false);
   const [quote,setQuote]=useState<PaymentQuote>();const [feeLimit,setFeeLimit]=useState('');const [hash,setHash]=useState('');
   const [purchaseConsent,setPurchaseConsent]=useState(false);const [feeConsent,setFeeConsent]=useState(false);
   const [cancelConsent,setCancelConsent]=useState(false);const [closeConsent,setCloseConsent]=useState(false);const [refundConsent,setRefundConsent]=useState(false);
-  const [inventory,setInventory]=useState<{available:number;reserved:number;purchase_pending:boolean}>();
+  const [inventory,setInventory]=useState<{available:number;reserved:number;purchase_pending:boolean;can_purchase:boolean}>();
   const [paymentProgress,setPaymentProgress]=useState<TicketPaymentProgress>();
   const [progressError,setProgressError]=useState(false);const [finishing,setFinishing]=useState(false);
   const [actionStatus,setActionStatus]=useState('Checking your saved purchase…');
@@ -29,24 +30,31 @@ function Tickets() {
   const [updateRequired,setUpdateRequired]=useState(false);const [progressReason,setProgressReason]=useState('');
   const [busy,setBusy]=useState(false);const locked=useRef(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
   async function load() {
+    setActionStatus('Connecting to the installed app…');
     const caps=await publicOperation<{scope:PublicScope;refund_payout_configured?:boolean;verifier_release:number}>('public-capabilities');
+    setActionStatus('Checking the configured ticket offer…');
     const next=await validateTicketOffer(await publicOperation('public-ticket-offer'),caps.scope);
-    const nextBulk=caps.verifier_release>=12||next.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3'?await publicOperation<BulkPurchase>('public-ticket-bulk-status'):undefined;
+    setActionStatus('Reading the saved purchase on this device…');
+    const nextBulk=caps.verifier_release>=12||next.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3'?await publicOperation<BulkPurchase|{profile:BulkPurchase['profile'];phase:'none'}>('public-ticket-bulk-status'):undefined;
     const state=await publicOperation<TicketPending>('public-ticket-pending');
     if(state.purchase)validateTicketPurchase(state.purchase,next);
+    setActionStatus('Checking the saved refund state…');
     const refunds=caps.refund_payout_configured===true?await validateRefundState(await publicOperation('public-ticket-refund-state'),next,state):undefined;
-    const counts=await publicOperation<{available:number;reserved:number;purchase_pending:boolean}>('public-ticket-status');
+    setActionStatus('Counting available tickets and checking earlier purchases…');
+    const counts=await publicOperation<{available:number;reserved:number;purchase_pending:boolean;can_purchase:boolean}>('public-ticket-status');
     setInventory(counts);setNeedsReload(false);setUpdateRequired(false);
-    setBulkEnabled(caps.verifier_release>=11||next.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3');setHelperRelease(caps.verifier_release);setBulkState(nextBulk);
+    setLegacyBlocked(!counts.can_purchase&&counts.purchase_pending&&!state.purchase&&(!nextBulk||['none','complete'].includes(nextBulk.phase)));
+    setBulkEnabled(caps.verifier_release>=11||next.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3');setHelperRelease(caps.verifier_release);setBulkState(nextBulk?.phase==='none'?undefined:nextBulk);
     setRefundState(refunds);
     setOffer(next);setPending(state);setQuote(undefined);setFeeConsent(false);return {offer:next,pending:state,inventory:counts,refunds};
   }
-  useEffect(()=>{void run(async()=>{await load();},'Checking your saved purchase and ticket inventory…');},[]);
-  async function run(work:()=>Promise<void>,description='Checking this saved operation…') {
+  useEffect(()=>{void run(async()=>{await load();},'Checking your saved purchase and ticket inventory…',false);},[]);
+  async function run(work:()=>Promise<void>,description='Checking this saved operation…',refreshAfterFailure=true) {
     if(locked.current)return;locked.current=true;setBusy(true);setError('');setNotice('');setActionStatus(description);
     try{await work();}catch(e){
       setFinishing(false);setError(e instanceof Error?e.message:'Could not confirm this step. Your saved purchase is preserved.');
       if(e instanceof PublicOperationError&&e.code==='extension-update-required'){setUpdateRequired(true);setNeedsReload(true);return;}
+      if(!refreshAfterFailure){setNeedsReload(true);return;}
       try{await load();}catch{setNeedsReload(true);}
     }finally{locked.current=false;setBusy(false);setActionStatus('');}
   }
@@ -194,11 +202,11 @@ function Tickets() {
   const includePreparedPack=helperRelease>=12&&!!p&&!pending?.payment_intent&&!p.payment_tx&&pending?.closed_attempts===0&&!refundState?.pending;
   const activeBulk=!!bulkState&&['armed','importing','paused'].includes(bulkState.phase);
   const oneCall=offer?.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3';
-  const showBulk=bulkEnabled&&(quantity==='50'||oneCall)&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending;
+  const showBulk=!legacyBlocked&&bulkEnabled&&(quantity==='50'||oneCall)&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending;
   const currentProgress=paymentProgress?.pack_hash===p?.pack_hash?paymentProgress:undefined;
   const ready=!!inventory&&!p&&inventory.available>0&&!needsReload;
   const completed=ready||refundVerified?4:currentProgress?.state==='finalized'?3:currentProgress?.state==='confirming'?2:p?1:0;
-  const summary=busy?actionStatus:updateRequired?'Reload NockApp itself: this page and its background are from different versions.':refundVerified?notice:refundState?.pending?(notice||'Refund authorization is saved. Continue the same refund below; no new wallet signature is needed.'):needsReload?'Saved state could not be checked. Reload it before doing anything else.':ready?`${inventory!.available} tickets ready to use.`
+  const summary=busy?actionStatus:updateRequired?'Reload NockApp itself: this page and its background are from different versions.':refundVerified?notice:refundState?.pending?(notice||'Refund authorization is saved. Continue the same refund below; no new wallet signature is needed.'):needsReload?'Saved state could not be checked. Reload it before doing anything else.':legacyBlocked?'An earlier purchase is unresolved. New purchases are paused; no wallet action is needed.':ready?`${inventory!.available} tickets ready to use.`
     :hasPaymentAttempt?progressError?progressReason
       :currentProgress?.state==='finalized'?finishing?'Payment finalized. Finishing this purchase…':'Payment finalized. Get your paid tickets below.'
       :currentProgress?.state==='confirming'?'Payment found. Waiting for chain finality; no further payment is needed.'
@@ -214,10 +222,10 @@ function Tickets() {
   </section>;
   return <main className="wallet-authorization ticket-wallet"><h1>Publication tickets</h1>
     <p>Buy a pack to publish anonymously. Your paying wallet is public on Base Sepolia; no Twitter account is needed to buy.</p>
-    {bulkEnabled&&!oneCall&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending&&<label>Tickets to buy<select value={quantity} disabled={bulkActive||busy} onChange={e=>setQuantity(e.target.value)}><option value="50">50 tickets in one payment</option><option value="2">2 tickets</option></select></label>}
-    {showBulk&&offer&&<BulkTicketPurchase includePreparedPack={includePreparedPack} offer={offer} onActive={setBulkActive} canRefund={!!refundState} onRefresh={()=>void run(async()=>{await load();},'Refreshing your ticket inventory…')}/>}
+    {!legacyBlocked&&bulkEnabled&&!oneCall&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending&&<label>Tickets to buy<select value={quantity} disabled={bulkActive||busy} onChange={e=>setQuantity(e.target.value)}><option value="50">50 tickets in one payment</option><option value="2">2 tickets</option></select></label>}
+    {showBulk&&offer&&<BulkTicketPurchase includePreparedPack={includePreparedPack} offer={offer} onActive={setBulkActive} canRefund={!!refundState} onRefresh={()=>void run(async()=>{await load();},'Refreshing your ticket inventory…',false)}/>}
     {showBulk&&refundState&&<p>The shared refund reserve is capped at {formatEth(refundState.policy.principal_budget_wei)} ETH across at most {refundState.policy.max_refunds} packs. It may not cover your whole purchase; funding and payout are not guaranteed.</p>}
-    {!showBulk&&t&&<section className="ticket-price" aria-label="Shared ticket offer"><strong>{t.pack_size} tickets · {formatEth(t.pack_price_wei)} test ETH</strong><p>Plus network fees. Use tickets before {new Date(t.redeem_before*1000).toLocaleString('en-AU',{timeZone:'Australia/Brisbane',timeZoneName:'short'})}.</p></section>}
+    {!showBulk&&t&&<section className="ticket-price" aria-label="Shared ticket offer"><strong>{oneCall?50:t.pack_size} tickets · {formatEth(oneCall?(25n*BigInt(t.pack_price_wei)).toString():t.pack_price_wei)} test ETH</strong><p>Plus network fees. Use tickets before {new Date(t.redeem_before*1000).toLocaleString('en-AU',{timeZone:'Australia/Brisbane',timeZoneName:'short'})}.</p></section>}
     {!showBulk&&<section className="ticket-progress" aria-label="Ticket purchase progress" aria-busy={busy}>
       <ol><li>Review</li><li>Pay</li><li>Finalize</li><li>Tickets ready</li></ol>
       <progress max={4} value={busy||!offer&&!error?undefined:completed} aria-label="Ticket purchase completion"/>
@@ -229,12 +237,13 @@ function Tickets() {
     {error&&<p role="alert">{error}</p>}{notice&&<p className="ticket-notice">{notice}</p>}
     {inventory&&<p>{inventory.available} available · {inventory.reserved} assigned to posts <span>(includes completed posts)</span></p>}
     {updateRequired?<button className="primary" disabled={busy} onClick={()=>api().runtime.reload()}>Reload NockApp extension</button>
-      :needsReload&&<button className="primary" disabled={busy} onClick={()=>void run(refresh,'Checking the saved purchase without a wallet action…')}>Check saved purchase</button>}
+      :needsReload&&<button className="primary" disabled={busy} onClick={()=>void run(refresh,'Checking the saved purchase without a wallet action…',false)}>Check saved purchase</button>}
+    {legacyBlocked&&<p>Your existing tickets and saved attempt are preserved. A new payment will not fix the earlier attempt.</p>}
     {!needsReload&&ready&&<>
       <button className="primary" disabled={busy} onClick={()=>void run(async()=>{const tab=await api().tabs.getCurrent();if(tab?.id!==undefined)await api().tabs.remove(tab.id);},'Returning to NockApp…')}>Back to NockApp</button>
-      {!showBulk&&<details><summary>Buy another pack</summary>{!quote&&purchaseControls}</details>}
+      {!showBulk&&!legacyBlocked&&<details><summary>Buy another pack</summary>{!quote&&purchaseControls}</details>}
     </>}
-    {!showBulk&&!needsReload&&offer&&pending&&!ready&&!hasPaymentAttempt&&!quote&&purchaseControls}
+    {!showBulk&&!legacyBlocked&&!needsReload&&offer&&pending&&!ready&&!hasPaymentAttempt&&!quote&&purchaseControls}
     {!needsReload&&p&&hasPaymentAttempt&&!quote&&!refundState?.pending&&<section aria-label="Finish saved purchase">
       <p>This finishes only your saved pack. It verifies the payment and imports the paid tickets; it does not open MetaMask or send another payment. Issuance permanently prevents cancellation of this pack.</p>
       <button className="primary" disabled={busy||finishing} onClick={()=>{setError('');setFinishing(true);setRefreshProgress(n=>n+1);}}>{finishing?'Finishing automatically…':'Get my tickets'}</button>
