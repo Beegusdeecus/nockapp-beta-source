@@ -6,13 +6,14 @@ import { beginWalletTracking, recordWalletReply, PaymentTrackingError } from './
 
 const address=(v:unknown):v is string=>typeof v==='string'&&/^0x[0-9a-f]{40}$/.test(v)&&!/^0x0+$/.test(v);
 const hash=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
-export type BulkPurchase={profile:'nockapp-ticket-bulk-purchase-v1';phase:'prepared'|'armed'|'importing'|'paused'|'complete';batch_id:string;
+export type BulkPurchase={profile:'nockapp-ticket-bulk-purchase-v1'|'nockapp-ticket-bulk-purchase-v2';phase:'prepared'|'armed'|'importing'|'paused'|'complete';batch_id:string;
   ticket_count:50;pack_count:25;imported_tickets:number;settled_tickets:number;refunded_tickets:number;payer:string|null;transaction_hash:string|null;total_price_wei:string;
   calls:{to:string;value:string;data:string}[];dispatch_authorized?:true};
 const admitted=new WeakSet<object>();
 function freeze<T>(value:T):T{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;}
-export function validBulkPurchase(v:unknown):v is BulkPurchase|{profile:'nockapp-ticket-bulk-purchase-v1';phase:'none'}{
-  if(!object(v)||v.profile!=='nockapp-ticket-bulk-purchase-v1')return false;
+export function validBulkPurchase(v:unknown):v is BulkPurchase|{profile:'nockapp-ticket-bulk-purchase-v1'|'nockapp-ticket-bulk-purchase-v2';phase:'none'}{
+  if(!object(v)||!['nockapp-ticket-bulk-purchase-v1','nockapp-ticket-bulk-purchase-v2'].includes(String(v.profile)))return false;
+  const single=v.profile==='nockapp-ticket-bulk-purchase-v2';
   if(v.phase==='none')return exact(v,['profile','phase']);
   return exact(v,['profile','phase','batch_id','ticket_count','pack_count','imported_tickets','settled_tickets','refunded_tickets','payer','transaction_hash','total_price_wei','calls',...('dispatch_authorized'in v?['dispatch_authorized']:[])])
     &&['prepared','armed','importing','paused','complete'].includes(String(v.phase))&&hash(v.batch_id)&&v.ticket_count===50&&v.pack_count===25
@@ -26,16 +27,24 @@ export function validBulkPurchase(v:unknown):v is BulkPurchase|{profile:'nockapp
     &&(!['importing','complete'].includes(String(v.phase))||v.transaction_hash!==null)
     &&typeof v.total_price_wei==='string'&&/^[1-9][0-9]{0,38}$/.test(v.total_price_wei)
     &&(!('dispatch_authorized'in v)||v.dispatch_authorized===true&&v.phase==='armed')
-    &&Array.isArray(v.calls)&&v.calls.length===25&&v.calls.every(c=>object(c)&&exact(c,['to','value','data'])&&address(c.to)
-      &&typeof c.value==='string'&&/^0x[1-9a-f][0-9a-f]{0,31}$/.test(c.value)&&typeof c.data==='string'&&/^0x9c9a1061[0-9a-f]{64}$/.test(c.data))
-    &&new Set(v.calls.map(c=>c.data)).size===25;
+    &&Array.isArray(v.calls)&&v.calls.length===(single?1:25)&&v.calls.every(c=>object(c)&&exact(c,['to','value','data'])&&address(c.to)
+      &&typeof c.value==='string'&&/^0x[1-9a-f][0-9a-f]{0,31}$/.test(c.value)&&typeof c.data==='string'&&(single?/^0xfe0ff097[0-9a-f]{1600}$/:/^0x9c9a1061[0-9a-f]{64}$/).test(c.data))
+    &&new Set(bulkPackHashes(v as unknown as BulkPurchase)).size===25
+    &&bulkPackHashes(v as unknown as BulkPurchase).every(h=>!/^0x0+$/.test(h));
+}
+export function bulkPackHashes(v:BulkPurchase):string[]{
+  return v.profile==='nockapp-ticket-bulk-purchase-v2'
+    ? (v.calls[0].data.slice(10).match(/.{64}/g)??[]).map(h=>'0x'+h)
+    : v.calls.map(c=>'0x'+c.data.slice(-64));
 }
 export async function validateBulkPurchase(v:unknown,offer:TicketOffer):Promise<BulkPurchase|undefined>{
   if(!validBulkPurchase(v))throw Error('Unsupported bulk purchase. Keep the saved operation.');
   if(v.phase==='none')return undefined;
-  if(offer.manifest.terms.pack_size!==2||v.total_price_wei!==(25n*BigInt(offer.manifest.terms.pack_price_wei)).toString()
-    ||v.calls.some(c=>c.to!==offer.manifest.purchase_contract||c.value!=='0x'+BigInt(offer.manifest.terms.pack_price_wei).toString(16))
-    ||v.batch_id!==await ticketDigest({parameters:offer.parameters,packs:v.calls.map(c=>'0x'+c.data.slice(-64))}))
+  const single=v.profile==='nockapp-ticket-bulk-purchase-v2';
+  if(single!==(offer.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3')
+    ||offer.manifest.terms.pack_size!==2||v.total_price_wei!==(25n*BigInt(offer.manifest.terms.pack_price_wei)).toString()
+    ||v.calls.some(c=>c.to!==offer.manifest.purchase_contract||c.value!=='0x'+(BigInt(offer.manifest.terms.pack_price_wei)*(single?25n:1n)).toString(16))
+    ||v.batch_id!==await ticketDigest({parameters:offer.parameters,packs:bulkPackHashes(v)}))
     throw Error('The batch does not match the reviewed ticket offer. No payment was requested.');
   const checked=freeze(structuredClone(v));admitted.add(checked);return checked;
 }
@@ -52,7 +61,8 @@ export async function sendBulkPurchase(armed:BulkPurchase,p?:WalletProvider):Pro
   const provider=p??await baseWalletProvider();
   const [accounts,chain]=await Promise.all([walletCall(provider,'eth_accounts'),walletCall(provider,'eth_chainId')]);
   if(!Array.isArray(accounts)||typeof accounts[0]!=='string'||accounts[0].toLowerCase()!==armed.payer||chain!=='0x14a34')throw Error('Wallet account or network changed. Keep the saved purchase.');
-  await requireAtomicWallet(armed.payer,provider);
+  // A single contract call is atomic in the EVM without a wallet account upgrade.
+  if(armed.profile==='nockapp-ticket-bulk-purchase-v1')await requireAtomicWallet(armed.payer,provider);
   // Recheck after asynchronous wallet admission: two callers can arrive
   // before the first one has completed those reads. Claim synchronously.
   if(dispatched.has(armed.batch_id))throw Error('This saved payment may already have been requested. Check its status; do not pay again.');
@@ -65,7 +75,7 @@ export async function sendBulkPurchase(armed:BulkPurchase,p?:WalletProvider):Pro
     throw new PaymentTrackingError('Payment tracking could not be saved. No wallet payment was requested. The saved attempt remains locked; do not pay again.');
   }
   let result:unknown;
-  try{result=await walletCall(provider,'wallet_sendCalls',[{version:'2.0.0',id,chainId:'0x14a34',from:armed.payer,atomicRequired:true,calls:armed.calls}]);}
+  try{result=await walletCall(provider,'wallet_sendCalls',[{version:'2.0.0',id,chainId:'0x14a34',from:armed.payer,atomicRequired:armed.profile==='nockapp-ticket-bulk-purchase-v1',calls:armed.calls}]);}
   catch(error){try{await recordWalletReply(armed.batch_id,id,undefined,error);}catch{/* Preserve the original durable ID and native fence. */}throw error;}
   await recordWalletReply(armed.batch_id,id,result);
 }

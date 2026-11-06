@@ -250,8 +250,11 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
   const known = thread ? rows.filter(r => r.post?.kind === 'comment' && r.thread?.bundle_hash === thread.bundle_hash) : rows.filter(r => !selected || !r.post || r.post.references.some(ref => ref[0] === selected));
   const inThisView=(r:PublicSubmission)=>mode==='legacy'||(root?r.core.thread?.bundle_hash===root.bundle_hash:!r.core.thread);
   const checkKey=(r:PublicSubmission)=>`${r.core.post.id}:${r.bundle_hash}`;
-  const pendingChecks=outbox.filter(r=>inThisView(r)&&!!r.bundle_hash&&r.last_known?.state!=='finalized'&&r.last_known?.state!=='invalid'
-    &&(r.phase==='submitted'||!!r.last_attempt||mode!=='legacy'&&!checkedPublications.current.has(checkKey(r)))).map(r=>r.core.post.id).sort().join(',');
+  const recentCompleted=new Set(outbox.filter(r=>!!r.last_attempt&&r.last_known?.state==='finalized').slice(-5).map(r=>r.core.post.id));
+  const pendingChecks=outbox.filter(r=>!!r.bundle_hash&&r.last_known?.state!=='invalid'&&(
+    !!r.last_attempt&&(r.last_known?.state!=='finalized'||recentCompleted.has(r.core.post.id))
+    ||inThisView(r)&&!r.last_attempt&&r.last_known?.state!=='finalized'&&mode!=='legacy'&&!checkedPublications.current.has(checkKey(r))
+  )).map(r=>r.core.post.id).sort().join(',');
   useEffect(()=>{
     if(!pendingChecks)return;
     let live=true;let checking=false;let cursor=0;const ids=pendingChecks.split(',');const controller=new AbortController();
@@ -265,16 +268,17 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
         if(result.bundle_hash!==previous.bundle_hash||canonicalAscii(result.core)!==canonicalAscii(previous.core))throw Error('Publication status did not match the original comment.');
         if(live){
           if(result.last_known?.state==='finalized'){
-            // Restore the canonical number without signing, uploading or
-            // calling the publication service again. Preserve newer edits.
+            // Restore the canonical number without signing or another index.
+            // The versioned native helper may repair exact finalized bytes.
+            // Preserve released intents and newer drafts.
             if(mode!=='legacy'){
-              const intent=(await publicIntents()).find(i=>i.post.id===id);if(intent){
+              const intent=(await publicIntents()).find(i=>i.post.id===id);if(intent&&!intent.released){
                 checkSubmission(result,intent);const draft=await readDraft(intent.draft_key);
                 if(draft.title.trim()===(intent.post.title??'')&&draft.body.trim()===intent.post.body&&draft.credentials.length===0&&!draft.passportFacts?.length&&!draft.zkidFacts?.length)await clearDraftIfUnchanged(intent.draft_key,draft);
                 if(intent.acknowledged&&!intent.released)await acknowledgePublicIntent(id,true);
               }
             }
-            if(live&&!working.current){setNotice(`Published as No.${result.last_known.post_number}. Publication restored automatically.`);if(mode!=='legacy')published(result);}
+            if(live&&!working.current&&previous.last_known?.state!=='finalized'){setNotice(`Published as No.${result.last_known.post_number}. Publication restored automatically.`);if(mode!=='legacy')published(result);}
           }
           if(live){checkedPublications.current.add(checkKey(result));setPublicationChecks(old=>({...old,[id]:'checked'}));setOutbox(old=>old.map(r=>r.core.post.id===id&&r.bundle_hash===result.bundle_hash?result:r));setMonitorNotice('');}
         }
@@ -355,10 +359,10 @@ export function PublicDiscussion({mode='legacy',root,onPublished,initialCapabili
           <PostBody body={row.core.post.body} className="post-body" onReference={n=>void api().tabs.create({url:forumURL(n)})}/>
           {intents.find(i=>i.post.id===row.core.post.id)?.history&&<p>Selected authorship links: {intents.find(i=>i.post.id===row.core.post.id)!.history!.records.map(r=>`No.${r.number}`).join(', ')}.</p>}
           {row.bundle_hash&&!row.last_attempt&&['closing','expired'].includes(row.follower_window??'')&&<p role="status">The saved follower proof has run out of time. You can publish these exact bytes, but the follower badge may be missing. The original ticket assignment stays with this comment.</p>}
-          {(row.last_attempt||row.phase==='submitted')&&row.last_known?.state!=='invalid'?<PublicationProgress stage={3}
+          {(row.last_attempt||row.phase==='submitted')&&row.last_known?.state!=='invalid'?<PublicationProgress stage={3} indexed={!!row.last_known?.post_number}
             startedAt={row.last_attempt?.requested_at??row.core.post.created_at} checkedAt={row.last_known?.checked_at}
             checking={publicationChecks[row.core.post.id]==='checking'}
-            message={publicationChecks[row.core.post.id]==='unavailable'?'Status temporarily unavailable. Your comment is saved; checking again automatically.':'Publishing: waiting for finalized inclusion. This is checked automatically.'}/>:<p role="status">{row.last_known?.state==='invalid'?'The indexed post failed verification. Its ticket assignment is preserved.':row.bundle_hash&&publicationChecks[row.core.post.id]==='unavailable'?'Status unavailable. Checking again automatically; no new publication is being sent.':row.bundle_hash&&publicationChecks[row.core.post.id]!=='checked'?'Checking whether this exact comment was already published…':row.phase==='wallet-needed'?'Not submitted. This post needs your wallet authorization.':'Not submitted by this app. Review the exact text above before publishing.'}</p>}
+            message={publicationChecks[row.core.post.id]==='unavailable'?'Status temporarily unavailable. Your comment is saved; checking again automatically.':row.last_known?.post_number?`Indexed as No.${row.last_known.post_number}. Checking and delivering the exact public files; no extra ticket is needed.`:'Publishing: waiting for finalized inclusion. This is checked automatically.'}/>:<p role="status">{row.last_known?.state==='invalid'?'The indexed post failed verification. Its ticket assignment is preserved.':row.bundle_hash&&publicationChecks[row.core.post.id]==='unavailable'?'Status unavailable. Checking again automatically; no new publication is being sent.':row.bundle_hash&&publicationChecks[row.core.post.id]!=='checked'?'Checking whether this exact comment was already published…':row.phase==='wallet-needed'?'Not submitted. This post needs your wallet authorization.':'Not submitted by this app. Review the exact text above before publishing.'}</p>}
           {row.last_attempt?.transaction_hash&&<a href={`https://sepolia.basescan.org/tx/${row.last_attempt.transaction_hash}`} target="_blank" rel="noopener">View submitted transaction</a>}
           {row.bundle_hash&&!row.last_attempt&&row.phase!=='submitted'&&row.last_known?.state!=='invalid'&&publicationChecks[row.core.post.id]!=='checked'&&<progress aria-label="Recovering publication status"/>}
           {row.core.selection.address&&!row.bundle_hash&&<button disabled={busy} onClick={()=>void api().tabs.create({url:api().runtime.getURL(`public-wallet.html#post=${row.core.post.id}`)})}>Authorize this post in MetaMask</button>}

@@ -51,6 +51,20 @@ export function CanonicalForum(){
     document.getElementById(`post-${canonicalNumber(raw)}`)?.scrollIntoView({block:'center'});
   },[raw,thread]);
   useEffect(()=>{if(isTab)return;const timer=setInterval(()=>{if(document.visibilityState==='visible'&&!busy&&!menu)setRefresh(v=>v+1);},30000);return()=>clearInterval(timer);},[isTab,busy,menu]);
+  useEffect(()=>{
+    // Run only after the visible read finishes. The installed helper bounds
+    // reconciliation to four due operations per pass; it sends individual
+    // hashes, never the owner's publication history, to the storage service.
+    if(!caps||busy||composing||raw)return;
+    let live=true;let checking=false;const control=new AbortController();
+    const recover=async()=>{if(!live||checking||document.visibilityState==='hidden')return;checking=true;
+      try{await publicOperation('public-outbox',{after:0,limit:4},control.signal);}
+      catch{/* Preserve the feed and retry later; never submit another index. */}
+      finally{checking=false;}};
+    void recover();const timer=setInterval(()=>void recover(),30000);
+    const visible=()=>{if(document.visibilityState==='visible')void recover();};document.addEventListener('visibilitychange',visible);
+    return()=>{live=false;control.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
+  },[!!caps,busy,composing,raw]);
   function search(e:React.FormEvent){e.preventDefault();try{void api().tabs.create({url:forumURL(input)});setError('');}catch{setError('Enter a post number, such as 3.');}}
   const root=thread?.root;const canReply=root&&readable(root)&&root.post!.kind==='thread'&&root.relationship_state==='valid';
   const posts=root?[root,...thread!.posts.filter(r=>r.post_number!==root.post_number)]:thread?[thread.selected]:page?.posts??[];

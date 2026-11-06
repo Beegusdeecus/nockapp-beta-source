@@ -31,13 +31,13 @@ function Tickets() {
   async function load() {
     const caps=await publicOperation<{scope:PublicScope;refund_payout_configured?:boolean;verifier_release:number}>('public-capabilities');
     const next=await validateTicketOffer(await publicOperation('public-ticket-offer'),caps.scope);
-    const nextBulk=caps.verifier_release>=12?await publicOperation<BulkPurchase>('public-ticket-bulk-status'):undefined;
+    const nextBulk=caps.verifier_release>=12||next.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3'?await publicOperation<BulkPurchase>('public-ticket-bulk-status'):undefined;
     const state=await publicOperation<TicketPending>('public-ticket-pending');
     if(state.purchase)validateTicketPurchase(state.purchase,next);
     const refunds=caps.refund_payout_configured===true?await validateRefundState(await publicOperation('public-ticket-refund-state'),next,state):undefined;
     const counts=await publicOperation<{available:number;reserved:number;purchase_pending:boolean}>('public-ticket-status');
     setInventory(counts);setNeedsReload(false);setUpdateRequired(false);
-    setBulkEnabled(caps.verifier_release>=11);setHelperRelease(caps.verifier_release);setBulkState(nextBulk);
+    setBulkEnabled(caps.verifier_release>=11||next.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3');setHelperRelease(caps.verifier_release);setBulkState(nextBulk);
     setRefundState(refunds);
     setOffer(next);setPending(state);setQuote(undefined);setFeeConsent(false);return {offer:next,pending:state,inventory:counts,refunds};
   }
@@ -193,7 +193,8 @@ function Tickets() {
   const p=pending?.purchase;const intent=pending?.payment_intent;const t=offer?.manifest.terms;
   const includePreparedPack=helperRelease>=12&&!!p&&!pending?.payment_intent&&!p.payment_tx&&pending?.closed_attempts===0&&!refundState?.pending;
   const activeBulk=!!bulkState&&['armed','importing','paused'].includes(bulkState.phase);
-  const showBulk=bulkEnabled&&quantity==='50'&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending;
+  const oneCall=offer?.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3';
+  const showBulk=bulkEnabled&&(quantity==='50'||oneCall)&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending;
   const currentProgress=paymentProgress?.pack_hash===p?.pack_hash?paymentProgress:undefined;
   const ready=!!inventory&&!p&&inventory.available>0&&!needsReload;
   const completed=ready||refundVerified?4:currentProgress?.state==='finalized'?3:currentProgress?.state==='confirming'?2:p?1:0;
@@ -213,7 +214,7 @@ function Tickets() {
   </section>;
   return <main className="wallet-authorization ticket-wallet"><h1>Publication tickets</h1>
     <p>Buy a pack to publish anonymously. Your paying wallet is public on Base Sepolia; no Twitter account is needed to buy.</p>
-    {bulkEnabled&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending&&<label>Tickets to buy<select value={quantity} disabled={bulkActive||busy} onChange={e=>setQuantity(e.target.value)}><option value="50">50 tickets in one payment</option><option value="2">2 tickets</option></select></label>}
+    {bulkEnabled&&!oneCall&&(!p||includePreparedPack||activeBulk)&&!refundState?.pending&&<label>Tickets to buy<select value={quantity} disabled={bulkActive||busy} onChange={e=>setQuantity(e.target.value)}><option value="50">50 tickets in one payment</option><option value="2">2 tickets</option></select></label>}
     {showBulk&&offer&&<BulkTicketPurchase includePreparedPack={includePreparedPack} offer={offer} onActive={setBulkActive} canRefund={!!refundState} onRefresh={()=>void run(async()=>{await load();},'Refreshing your ticket inventory…')}/>}
     {showBulk&&refundState&&<p>The shared refund reserve is capped at {formatEth(refundState.policy.principal_budget_wei)} ETH across at most {refundState.policy.max_refunds} packs. It may not cover your whole purchase; funding and payout are not guaranteed.</p>}
     {!showBulk&&t&&<section className="ticket-price" aria-label="Shared ticket offer"><strong>{t.pack_size} tickets · {formatEth(t.pack_price_wei)} test ETH</strong><p>Plus network fees. Use tickets before {new Date(t.redeem_before*1000).toLocaleString('en-AU',{timeZone:'Australia/Brisbane',timeZoneName:'short'})}.</p></section>}

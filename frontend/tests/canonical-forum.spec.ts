@@ -93,7 +93,8 @@ for(const mode of ['feed-and-thread','missing-root','automatic-check','reply','p
     await expect(p.getByRole('link',{name:'Open post No.4',exact:true})).toBeVisible();
     await expect(p.getByText('Post unavailable — its files could not be downloaded.',{exact:true}).first()).toBeVisible();
     await expect(p.getByText('Saved public posts',{exact:true})).toHaveCount(0);await expect(p.getByRole('button',{name:/check|refresh/i})).toHaveCount(0);
-    const initial=await w.evaluate(()=>(globalThis as any).forumFixture.calls);expect(initial.map((r:any)=>r.operation)).toEqual(['public-capabilities','public-page']);
+    await expect.poll(()=>w.evaluate(()=>(globalThis as any).forumFixture.calls.some((r:any)=>r.operation==='public-outbox'))).toBe(true);
+    const initial=await w.evaluate(()=>(globalThis as any).forumFixture.calls);expect(initial.map((r:any)=>r.operation)).toEqual(['public-capabilities','public-page','public-outbox']);
     expect(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     if(mode==='automatic-check')return;
     if(mode==='failed-refresh-keeps-posts'){

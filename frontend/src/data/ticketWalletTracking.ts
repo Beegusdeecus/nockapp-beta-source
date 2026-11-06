@@ -43,7 +43,7 @@ export async function recordWalletReply(batch:string,id:string,result:unknown,er
     await storage.set(TICKET_WALLET_KEY,{profile:PROFILE,batch,id,error:errorCode(error)});
   });
 }
-export async function readWalletDiagnostic(batch:string,provider:()=>Promise<WalletProvider>):Promise<WalletDiagnostic>{
+export async function readWalletDiagnostic(batch:string,provider:()=>Promise<WalletProvider>,atomicRequired=true):Promise<WalletDiagnostic>{
   const note=(state:WalletDiagnostic['state'],message:string,tracked=false)=>({state,message,tracked});
   let v:unknown;
   try{v=await storage.get(TICKET_WALLET_KEY);}catch{return note('unavailable','Wallet tracking could not be read. Independent onchain checks continue.');}
@@ -53,7 +53,7 @@ export async function readWalletDiagnostic(batch:string,provider:()=>Promise<Wal
   if(!validId(v.id))return note('unavailable','Wallet tracking is unavailable. Independent onchain checks continue.');
   try{
     const status=await walletCall(await provider(),'wallet_getCallsStatus',[v.id]);
-    if(!object(status)||status.id!==v.id||status.chainId!=='0x14a34'||status.atomic!==true||!Number.isInteger(status.status))throw Error('invalid-wallet-status');
+    if(!object(status)||status.id!==v.id||status.chainId!=='0x14a34'||typeof status.atomic!=='boolean'||atomicRequired&&status.atomic!==true||!Number.isInteger(status.status))throw Error('invalid-wallet-status');
     const code=status.status as number;
     if(code>=100&&code<200)return note('pending','MetaMask is still processing the payment. No onchain payment is confirmed yet.',true);
     if(code>=200&&code<300)return note('included','MetaMask reports payment included. Independently checking all 25 packs and chain finality before importing.',true);

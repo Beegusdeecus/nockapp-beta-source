@@ -21,7 +21,7 @@ const keccak = (v: Uint8Array) => '0x' + hex(keccak_256(v));
 const selector = (v: string) => keccak(utf8(v)).slice(0, 10);
 const word = (v: bigint | string) => '0x' + BigInt(v).toString(16).padStart(64, '0');
 function freeze<T>(v: T): T { if (v && typeof v === 'object') { Object.values(v).forEach(freeze);Object.freeze(v); }return v; }
-export type TicketOffer = { parameters: string; manifest: { terms: { profile: 'nockapp-public-prepaid-offer-v2'; redemption_ledger: string;
+export type TicketOffer = { parameters: string; manifest: { terms: { profile: 'nockapp-public-prepaid-offer-v2' | 'nockapp-public-prepaid-batch-offer-v3'; payment_receipt_version?: 2; packs_per_payment?: 25; redemption_ledger: string;
   chain_id: 84532; application: string; index_contract: string; index_runtime_keccak: string; ticket_spki: string;
   pack_size: number; pack_price_wei: string; payment_recipient: string; purchase_before: number; redeem_before: number;
   max_bundle_bytes: number; max_gas: number; max_total_fee_wei: string; refund_policy: string }; purchase_contract: string; purchase_runtime_keccak: string } };
@@ -37,12 +37,15 @@ export function validTicketOffer(v: unknown): v is TicketOffer {
     || !exact(v.manifest, ['terms', 'purchase_contract', 'purchase_runtime_keccak']) || !address(v.manifest.purchase_contract)
     || !h32(v.manifest.purchase_runtime_keccak) || !object(v.manifest.terms)) return false;
   const t = v.manifest.terms;
+  const batch=t.profile==='nockapp-public-prepaid-batch-offer-v3';
   return exact(t, ['profile', 'redemption_ledger', 'chain_id', 'application', 'index_contract', 'index_runtime_keccak', 'ticket_spki',
-    'pack_size', 'pack_price_wei', 'payment_recipient', 'purchase_before', 'redeem_before', 'max_bundle_bytes', 'max_gas', 'max_total_fee_wei', 'refund_policy'])
-    && t.profile === 'nockapp-public-prepaid-offer-v2' && t.redemption_ledger === 'nockapp-ticket-publication-ledger-v2'
+    'pack_size', 'pack_price_wei', 'payment_recipient', 'purchase_before', 'redeem_before', 'max_bundle_bytes', 'max_gas', 'max_total_fee_wei', 'refund_policy', ...(batch?['payment_receipt_version','packs_per_payment']:[])])
+    && (batch ? t.payment_receipt_version===2 && t.packs_per_payment===25 && t.pack_size===2
+      : t.profile === 'nockapp-public-prepaid-offer-v2') && t.redemption_ledger === 'nockapp-ticket-publication-ledger-v2'
     && t.chain_id === 84532 && h32(t.application) && address(t.index_contract) && h32(t.index_runtime_keccak) && address(t.payment_recipient)
     && typeof t.ticket_spki === 'string' && t.ticket_spki.length <= 1368 && /^[A-Za-z0-9+/]+={0,2}$/.test(t.ticket_spki)
-    && integer(t.pack_size) && t.pack_size >= 1 && t.pack_size <= 32 && wei(t.pack_price_wei) && wei(t.max_total_fee_wei)
+    && integer(t.pack_size) && t.pack_size >= 1 && t.pack_size <= 32 && wei(t.pack_price_wei)
+    && (!batch || wei((25n*BigInt(t.pack_price_wei as string)).toString())) && wei(t.max_total_fee_wei)
     && integer(t.purchase_before) && t.purchase_before > 0 && integer(t.redeem_before) && t.redeem_before > t.purchase_before
     && t.max_bundle_bytes === 65536 && integer(t.max_gas) && t.max_gas >= 21000 && t.max_gas <= 1000000
     && t.refund_policy === 'unissued-only-durable-decision-v1';
@@ -79,7 +82,7 @@ export async function validateTicketOffer(raw: unknown, scope: PublicScope): Pro
   if (!validTicketOffer(raw)) throw Error('Unsupported shared ticket offer.');
   const t = raw.manifest.terms;
   if (t.application !== scope.application || t.index_contract !== scope.contract || t.chain_id !== scope.chain_id
-    || raw.parameters !== await taggedHash('nockapp-ticket-offer-manifest-v1', raw.manifest)) throw Error('Ticket offer or deployment changed.');
+    || raw.parameters !== await taggedHash(t.profile==='nockapp-public-prepaid-batch-offer-v3'?'nockapp-ticket-offer-manifest-v3':'nockapp-ticket-offer-manifest-v1', raw.manifest)) throw Error('Ticket offer or deployment changed.');
   const der = Uint8Array.from(atob(t.ticket_spki), c => c.charCodeAt(0));
   if (btoa(String.fromCharCode(...der)) !== t.ticket_spki) throw Error('Noncanonical ticket public key.');
   const key = await crypto.subtle.importKey('spki', der, { name: 'RSA-PSS', hash: 'SHA-384' }, true, ['verify']);

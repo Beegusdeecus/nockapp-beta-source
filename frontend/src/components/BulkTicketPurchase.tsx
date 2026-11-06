@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { publicOperation, type TicketPaymentProgress } from '../publicDiscussion';
-import { readWalletDiagnostic, type WalletDiagnostic } from '../data/ticketWalletTracking';
+import { readWalletDiagnostic, walletFailure, type WalletDiagnostic } from '../data/ticketWalletTracking';
 import { bulkPaymentDiagnostic } from '../data/bulkPaymentDiagnostic';
-import { baseWalletProvider } from '../authoredWallet';
+import { baseWalletProvider, connectBaseWallet } from '../authoredWallet';
 import { observeTicketFinality } from '../data/ticketFinalityProgress';
 import { formatEth, type TicketOffer } from '../publicTickets';
-import { validateBulkPurchase, type BulkPurchase } from '../bulkTickets';
+import { validateBulkPurchase, sendBulkPurchase, type BulkPurchase } from '../bulkTickets';
 
 export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,includePreparedPack=false}:{offer:TicketOffer;onRefresh:()=>void;onActive:(active:boolean)=>void;canRefund?:boolean;includePreparedPack?:boolean}){
   const [saved,setSaved]=useState<BulkPurchase>();const [loaded,setLoaded]=useState(false);
@@ -16,6 +16,8 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
   const locked=useRef(false);const mounted=useRef(true);const completed=useRef(false);const [retry,setRetry]=useState(0);
   const latest=useRef<BulkPurchase|undefined>(undefined);
   const price=(25n*BigInt(offer.manifest.terms.pack_price_wei)).toString();
+  const compatible=offer.manifest.terms.profile==='nockapp-public-prepaid-batch-offer-v3';
+  const [consent,setConsent]=useState(false);
   async function accept(value:unknown){
     const next=await validateBulkPurchase(value,offer);
     latest.current=next;
@@ -38,7 +40,7 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
       if(locked.current){timer=setTimeout(()=>void check(),100);return;}
       if(document.visibilityState==='hidden'){timer=setTimeout(()=>void check(),30000);return;}
       if(current.phase==='armed'&&!trackingBusy.current){
-        trackingBusy.current=true;void readWalletDiagnostic(current.batch_id,baseWalletProvider).then(value=>{if(alive)setWalletStatus(value);}).finally(()=>{trackingBusy.current=false;});
+        trackingBusy.current=true;void readWalletDiagnostic(current.batch_id,baseWalletProvider,current.profile==='nockapp-ticket-bulk-purchase-v1').then(value=>{if(alive)setWalletStatus(value);}).finally(()=>{trackingBusy.current=false;});
       }
       checking=true;
       const ok=await run(async()=>{
@@ -58,8 +60,25 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
     void check();const visible=()=>{if(document.visibilityState==='visible'){clearTimeout(timer);void check();}};
     document.addEventListener('visibilitychange',visible);
     return()=>{alive=false;controller.abort();clearTimeout(timer);document.removeEventListener('visibilitychange',visible);};
-  },[saved?.batch_id,saved?.phase==='paused',retry]);
+  },[saved?.batch_id,saved?.phase==='armed'||saved?.phase==='importing',retry]);
   const complete=saved?.phase==='complete';const paid=!!saved?.transaction_hash;
+  async function review(){
+    if(!compatible||!consent||saved)return;
+    setStatus('Saving the exact 50-ticket purchase before any wallet request…');
+    await accept(await publicOperation('public-ticket-bulk-prepare',{ticket_count:50,approve_purchase:true}));
+    setStatus('Purchase saved. Review the full transaction and network fee in MetaMask before approving.');
+  }
+  async function pay(){
+    if(!compatible||!consent||saved?.phase!=='prepared')return;
+    setStatus('Connecting to MetaMask. No payment has been requested yet…');
+    const provider=await baseWalletProvider();const payer=await connectBaseWallet(provider);
+    setStatus('Saving the one-payment fence…');
+    const armed=await accept(await publicOperation('public-ticket-bulk-arm',{batch_id:saved.batch_id,payer,approve_payment:true}));
+    if(!armed)throw Error('The saved payment could not be checked. Do not pay again.');
+    setStatus('Review and approve this one transaction in MetaMask…');
+    try{await sendBulkPurchase(armed,provider);}catch(e){throw Error(walletFailure(e));}
+    setStatus('Wallet request saved. Checking payment and finality automatically…');
+  }
   const investigation=saved?.phase==='armed'&&chain?.state==='not-seen'&&!!walletStatus&&['untracked','rejected','failed'].includes(walletStatus.state);
   async function copyDiagnostic(){
     if(!saved)return;
@@ -88,7 +107,12 @@ export function BulkTicketPurchase({offer,onRefresh,onActive,canRefund=false,inc
     {copyFallback&&saved&&<textarea aria-label="Public payment diagnostic" readOnly value={bulkPaymentDiagnostic(saved,chain,walletStatus)}/>}
     {error&&<p role="alert">{error}</p>}
     {includePreparedPack&&<p>Your saved two-ticket pack is included in these 50 tickets. Its recovery data is preserved; there is no separate two-ticket payment.</p>}
-    {loaded&&(!saved||saved.phase==='prepared')&&<section role="note" aria-label="50-ticket checkout unavailable">
+    {compatible&&loaded&&(!saved||saved.phase==='prepared')&&<section aria-label="Review 50-ticket purchase">
+      <p>The operator holds prepaid funds and can refuse service or lose them. Once issued, tickets cannot be cancelled for a refund.</p>
+      <label><input type="checkbox" checked={consent} disabled={busy} onChange={e=>setConsent(e.target.checked)}/>I accept this price, expiry and prepaid custody risk.</label>
+      <button className="primary" disabled={busy||!consent} onClick={()=>void run(saved?pay:review)}>{busy?'Working…':saved?'Pay for 50 tickets in MetaMask':'Review 50 tickets'}</button>
+    </section>}
+    {!compatible&&loaded&&(!saved||saved.phase==='prepared')&&<section role="note" aria-label="50-ticket checkout unavailable">
       <p><strong>New 50-ticket payments are temporarily unavailable.</strong></p>
       <p>The current checkout needs more calls than MetaMask’s default batch limit. A compatible payment upgrade is required. No payment was requested.</p>
       {saved&&<p>Your prepared purchase is preserved. Do not replace it or pay through another tab.</p>}
