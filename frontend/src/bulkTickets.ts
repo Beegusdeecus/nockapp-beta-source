@@ -2,7 +2,7 @@ import { exact, object } from './zkidWire';
 import { baseWalletProvider } from './authoredWallet';
 import { ticketDigest, walletCall, type TicketOffer } from './publicTickets';
 import type { WalletProvider } from './publicWallet';
-import { saveWalletTracking } from './data/ticketWalletTracking';
+import { beginWalletTracking, recordWalletReply, PaymentTrackingError } from './data/ticketWalletTracking';
 
 const address=(v:unknown):v is string=>typeof v==='string'&&/^0x[0-9a-f]{40}$/.test(v)&&!/^0x0+$/.test(v);
 const hash=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
@@ -57,9 +57,15 @@ export async function sendBulkPurchase(armed:BulkPurchase,p?:WalletProvider):Pro
   // before the first one has completed those reads. Claim synchronously.
   if(dispatched.has(armed.batch_id))throw Error('This saved payment may already have been requested. Check its status; do not pay again.');
   dispatched.add(armed.batch_id);
-  // No sequential fallback, sendTransaction loop, retry or account upgrade.
+  // Persist a unique app-chosen ID before dispatch. A timeout/closed tab can
+  // recover wallet status with this ID even if the wallet reply never arrives.
+  let id:string;
+  try{id=await beginWalletTracking(armed.batch_id);}catch(error){
+    if(error instanceof PaymentTrackingError)throw error;
+    throw new PaymentTrackingError('Payment tracking could not be saved. No wallet payment was requested. The saved attempt remains locked; do not pay again.');
+  }
   let result:unknown;
-  try{result=await walletCall(provider,'wallet_sendCalls',[{version:'2.0.0',chainId:'0x14a34',from:armed.payer,atomicRequired:true,calls:armed.calls}]);}
-  catch(error){try{await saveWalletTracking(armed.batch_id,undefined,error);}catch{/* Native one-shot state remains authoritative. */}throw error;}
-  try{await saveWalletTracking(armed.batch_id,result);}catch{throw Error('The wallet replied, but its tracking ID could not be saved. Independent onchain checks continue; do not pay again.');}
+  try{result=await walletCall(provider,'wallet_sendCalls',[{version:'2.0.0',id,chainId:'0x14a34',from:armed.payer,atomicRequired:true,calls:armed.calls}]);}
+  catch(error){try{await recordWalletReply(armed.batch_id,id,undefined,error);}catch{/* Preserve the original durable ID and native fence. */}throw error;}
+  await recordWalletReply(armed.batch_id,id,result);
 }

@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import { validBulkPurchase, validateBulkPurchase, requireAtomicWallet, sendBulkPurchase, type BulkPurchase } from '../src/bulkTickets';
 import { validateTicketOffer, ticketDigest } from '../src/publicTickets';
 import { validPublicBody, publicProjection } from '../src/publicDiscussion';
+import { TICKET_WALLET_KEY, readWalletDiagnostic } from '../src/data/ticketWalletTracking';
 import { storage } from '../src/platform/storage';
-const originalStorage={...storage};
-test.beforeEach(()=>{const data=new Map<string,unknown>();storage.get=async<T>(key:string)=>data.get(key) as T;storage.set=async(key,value)=>{data.set(key,structuredClone(value));};});
-test.afterEach(()=>Object.assign(storage,originalStorage));
+const originalStorage={...storage};const originalLocks=Object.getOwnPropertyDescriptor(navigator,'locks');
+test.beforeEach(()=>{Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async<T>(_key:string,work:()=>Promise<T>)=>work()}});const data=new Map<string,unknown>();storage.get=async<T>(key:string)=>data.get(key) as T;storage.set=async(key,value)=>{data.set(key,structuredClone(value));};});
+test.afterEach(()=>{Object.assign(storage,originalStorage);if(originalLocks)Object.defineProperty(navigator,'locks',originalLocks);else Reflect.deleteProperty(navigator,'locks');});
 const f=JSON.parse(readFileSync(new URL('./fixtures/public-tickets-v6-20261101.json',import.meta.url),'utf8'));
 async function sample(seed:number){
   const offer=await validateTicketOffer(f.offer,f.scope);
@@ -20,7 +21,7 @@ function provider(payer:string,status='supported',lost=false){
     calls.push(input);
     if(input.method==='eth_accounts')return[payer];if(input.method==='eth_chainId')return'0x14a34';
     if(input.method==='wallet_getCapabilities')return{'0x14a34':{atomic:{status}}};
-    if(input.method==='wallet_sendCalls'){if(lost)throw Error('synthetic-wallet-reply-lost');return{id:'0x'+'ab'.repeat(32)};}
+    if(input.method==='wallet_sendCalls'){if(lost)throw Error('synthetic-wallet-reply-lost');return{id:(input.params![0] as any).id};}
     throw Error('Unexpected wallet method');
   }};
 }
@@ -28,7 +29,7 @@ test('50 tickets dispatch one exact atomic payment, with no transaction loop or 
   const {offer,raw}=await sample(100);const admitted=await validateBulkPurchase(raw,offer);expect(admitted).toBeDefined();
   const p=provider(f.rpc.payer);await sendBulkPurchase(admitted!,p);
   const sends=p.calls.filter(c=>c.method==='wallet_sendCalls');expect(sends).toHaveLength(1);
-  expect(sends[0].params).toEqual([{version:'2.0.0',chainId:'0x14a34',from:f.rpc.payer,atomicRequired:true,calls:raw.calls}]);
+  expect(sends[0].params).toEqual([{version:'2.0.0',id:expect.stringMatching(/^0x[0-9a-f]{64}$/),chainId:'0x14a34',from:f.rpc.payer,atomicRequired:true,calls:raw.calls}]);
   await expect(sendBulkPurchase(admitted!,p)).rejects.toThrow('saved payment');
   expect(p.calls.some(c=>c.method==='eth_sendTransaction')).toBe(false);
 });
@@ -62,4 +63,17 @@ test('concurrent dispatch callers cannot send the same batch twice after asynchr
   const results=await Promise.allSettled([sendBulkPurchase(a!,p),sendBulkPurchase(b!,p)]);
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
   expect(p.calls.filter(c=>c.method==='wallet_sendCalls')).toHaveLength(1);
+});
+
+test('tracking ID is durable before the wallet sees a request and survives its lost reply',async()=>{
+ const {offer,raw}=await sample(500);const admitted=await validateBulkPurchase(raw,offer);const p=provider(f.rpc.payer,'supported',true);const request=p.request;
+ p.request=async input=>{if(input.method==='wallet_sendCalls'){const saved=await storage.get<any>(TICKET_WALLET_KEY);expect(saved.id).toBe((input.params![0] as any).id);expect(saved.batch).toBe(raw.batch_id);}return request(input);};
+ await expect(sendBulkPurchase(admitted!,p)).rejects.toThrow('synthetic-wallet-reply-lost');
+ const saved=await storage.get<any>(TICKET_WALLET_KEY);expect(saved.id).toMatch(/^0x[0-9a-f]{64}$/);
+ const status=await readWalletDiagnostic(raw.batch_id,async()=>({request:async input=>{expect(input.method).toBe('wallet_getCallsStatus');expect(input.params).toEqual([saved.id]);return{id:saved.id,chainId:'0x14a34',atomic:true,status:100};}}));
+ expect(status.state).toBe('pending');expect(p.calls.filter(c=>c.method==='wallet_sendCalls')).toHaveLength(1);
+});
+test('failed durable storage stops before any payment request reaches the wallet',async()=>{
+ const {offer,raw}=await sample(600);const admitted=await validateBulkPurchase(raw,offer);const p=provider(f.rpc.payer);storage.set=async()=>{throw Error('synthetic-disk-full');};
+ await expect(sendBulkPurchase(admitted!,p)).rejects.toThrow('No wallet payment was requested');expect(p.calls.some(c=>c.method==='wallet_sendCalls')).toBe(false);
 });
