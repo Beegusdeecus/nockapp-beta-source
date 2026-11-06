@@ -97,10 +97,11 @@ export function validateTicketPurchase(raw: unknown, offer: TicketOffer): Ticket
     || raw.transaction.value !== '0x' + BigInt(offer.manifest.terms.pack_price_wei).toString(16)) throw Error('Purchase does not match the exact shared offer.');
   const checked = freeze(raw);purchases.set(checked, offer);return checked;
 }
-export async function walletCall(p: WalletProvider, method: string, params?: unknown[]): Promise<unknown> {
+export class WalletResponseTimeout extends Error {}
+export async function walletCall(p: WalletProvider, method: string, params?: unknown[], timeoutMs=120000): Promise<unknown> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try { return await Promise.race([p.request({ method, ...(params ? { params } : {}) }), new Promise((_, reject) => {
-    timer = setTimeout(() => reject(Error('Wallet response lost. Recover this saved attempt; do not pay again.')), 120000);
+    timer = setTimeout(() => reject(new WalletResponseTimeout('Wallet response lost. Recover this saved attempt; do not pay again.')), timeoutMs);
   })]); } finally { if (timer) clearTimeout(timer); }
 }
 async function accountCheck(p: WalletProvider, payer: string) {

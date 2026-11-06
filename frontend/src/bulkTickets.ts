@@ -8,14 +8,14 @@ const address=(v:unknown):v is string=>typeof v==='string'&&/^0x[0-9a-f]{40}$/.t
 const hash=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
 export type BulkPurchase={profile:'nockapp-ticket-bulk-purchase-v1'|'nockapp-ticket-bulk-purchase-v2';phase:'prepared'|'armed'|'importing'|'paused'|'complete';batch_id:string;
   ticket_count:50;pack_count:25;imported_tickets:number;settled_tickets:number;refunded_tickets:number;payer:string|null;transaction_hash:string|null;total_price_wei:string;
-  calls:{to:string;value:string;data:string}[];dispatch_authorized?:true};
+  calls:{to:string;value:string;data:string}[];dispatch_authorized?:true;resume_payment_attempted?:true};
 const admitted=new WeakSet<object>();
 function freeze<T>(value:T):T{if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;}
 export function validBulkPurchase(v:unknown):v is BulkPurchase|{profile:'nockapp-ticket-bulk-purchase-v1'|'nockapp-ticket-bulk-purchase-v2';phase:'none'}{
   if(!object(v)||!['nockapp-ticket-bulk-purchase-v1','nockapp-ticket-bulk-purchase-v2'].includes(String(v.profile)))return false;
   const single=v.profile==='nockapp-ticket-bulk-purchase-v2';
   if(v.phase==='none')return exact(v,['profile','phase']);
-  return exact(v,['profile','phase','batch_id','ticket_count','pack_count','imported_tickets','settled_tickets','refunded_tickets','payer','transaction_hash','total_price_wei','calls',...('dispatch_authorized'in v?['dispatch_authorized']:[])])
+  return exact(v,['profile','phase','batch_id','ticket_count','pack_count','imported_tickets','settled_tickets','refunded_tickets','payer','transaction_hash','total_price_wei','calls',...('dispatch_authorized'in v?['dispatch_authorized']:[]),...('resume_payment_attempted'in v?['resume_payment_attempted']:[])])
     &&['prepared','armed','importing','paused','complete'].includes(String(v.phase))&&hash(v.batch_id)&&v.ticket_count===50&&v.pack_count===25
     &&typeof v.imported_tickets==='number'&&Number.isInteger(v.imported_tickets)&&v.imported_tickets>=0&&v.imported_tickets<=50&&v.imported_tickets%2===0
     &&typeof v.settled_tickets==='number'&&Number.isInteger(v.settled_tickets)&&v.settled_tickets>=0&&v.settled_tickets<=50
@@ -26,6 +26,7 @@ export function validBulkPurchase(v:unknown):v is BulkPurchase|{profile:'nockapp
     &&(v.transaction_hash===null||typeof v.transaction_hash==='string'&&/^0x[0-9a-f]{64}$/.test(v.transaction_hash))
     &&(!['importing','complete'].includes(String(v.phase))||v.transaction_hash!==null)
     &&typeof v.total_price_wei==='string'&&/^[1-9][0-9]{0,38}$/.test(v.total_price_wei)
+    &&(!('resume_payment_attempted'in v)||v.resume_payment_attempted===true&&v.phase!=='prepared'&&!('dispatch_authorized'in v))
     &&(!('dispatch_authorized'in v)||v.dispatch_authorized===true&&v.phase==='armed')
     &&Array.isArray(v.calls)&&v.calls.length===(single?1:25)&&v.calls.every(c=>object(c)&&exact(c,['to','value','data'])&&address(c.to)
       &&typeof c.value==='string'&&/^0x[1-9a-f][0-9a-f]{0,31}$/.test(c.value)&&typeof c.data==='string'&&(single?/^0xfe0ff097[0-9a-f]{1600}$/:/^0x9c9a1061[0-9a-f]{64}$/).test(c.data))

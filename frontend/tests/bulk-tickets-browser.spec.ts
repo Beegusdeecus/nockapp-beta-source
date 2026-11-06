@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { canonicalAscii } from '../src/authoredWallet';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/public-tickets-v6-20261101.json',import.meta.url),'utf8'));
-for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsupported','prepared-single','crash-slot-release','older-single','not-seen','wallet-pending','wallet-rejected','wallet-status-unavailable','lost-wallet-pending','one-call-purchase','one-call-lost-reply','one-call-lost-import','legacy-blocked','invalid-migrated-status'])test(`50-ticket browser flow ${mode}`,async({},testInfo)=>{
+for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsupported','prepared-single','crash-slot-release','older-single','not-seen','wallet-pending','wallet-rejected','wallet-status-unavailable','lost-wallet-pending','one-call-purchase','one-call-lost-reply','one-call-lost-import','legacy-blocked','earlier-unpaid','earlier-paid','earlier-hash','earlier-wrong-hash','invalid-migrated-status'])test(`50-ticket browser flow ${mode}`,async({},testInfo)=>{
   const f=structuredClone(fixture);const oneCall=mode.startsWith('one-call-')||['legacy-blocked','invalid-migrated-status'].includes(mode);
   if(['legacy-blocked','invalid-migrated-status'].includes(mode))f.offer.manifest.terms.pack_price_wei='100000000000000';
   if(oneCall){Object.assign(f.offer.manifest.terms,{profile:'nockapp-public-prepaid-batch-offer-v3',payment_receipt_version:2,packs_per_payment:25});f.offer.parameters=createHash('sha256').update('nockapp-ticket-offer-manifest-v3\0'+canonicalAscii(f.offer.manifest)).digest('hex');}
@@ -20,21 +20,42 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
   try{
     const worker=context.serviceWorkers()[0]??await context.waitForEvent('serviceworker');
     await worker.evaluate(async({f,base,mode})=>{
-      const state:any={single:['prepared-single','crash-slot-release','older-single'].includes(mode)?structuredClone(f.pending_prepared):structuredClone(f.empty),bulk:!['purchase','unsupported','prepared-single','older-single','one-call-purchase','one-call-lost-reply','one-call-lost-import','legacy-blocked','invalid-migrated-status'].includes(mode)?{...base,phase:'armed',payer:f.rpc.payer}:undefined,finalBlock:100,finalized:!['saved-armed','crash-slot-release','not-seen'].includes(mode),available:0,lost:false,calls:[]};Object.assign(globalThis,{bulkTest:state});
+      const earlier=mode.startsWith('earlier-');const state:any={single:['prepared-single','crash-slot-release','older-single'].includes(mode)?structuredClone(f.pending_prepared):structuredClone(f.empty),bulk:!['purchase','unsupported','prepared-single','older-single','one-call-purchase','one-call-lost-reply','one-call-lost-import','legacy-blocked','invalid-migrated-status'].includes(mode)?{...base,phase:'armed',payer:f.rpc.payer}:undefined,finalBlock:100,finalized:!['saved-armed','crash-slot-release','not-seen'].includes(mode),available:0,lost:false,calls:[]};Object.assign(globalThis,{bulkTest:state});
       if(['wallet-pending','wallet-rejected','wallet-status-unavailable','lost-wallet-pending'].includes(mode))await chrome.storage.local.set({'nockapp:ticket:wallet-display:v1':{profile:'nockapp-ticket-wallet-display-v2',batch:base.batch_id,id:'0x'+'ab'.repeat(32),error:mode==='wallet-rejected'?4001:null}});
       chrome.runtime.connectNative=(()=>{
         const listeners=new Set<(v:unknown)=>void>();
         return {onMessage:{addListener:(fn:(v:unknown)=>void)=>listeners.add(fn),removeListener:(fn:(v:unknown)=>void)=>listeners.delete(fn)},onDisconnect:{addListener:()=>{},removeListener:()=>{}},disconnect:()=>{},postMessage:(m:any)=>{
-          state.calls.push(structuredClone(m));let result;
-          if(m.operation==='public-capabilities')result={configured:true,protocol:5,scope:f.scope,verifier_release:mode==='older-single'?10:12,publication_mode:'tickets',anonymous_ticket_packs:true,follower_proof_configured:true,source_enrollment_configured:true,historical_issuer_views:true,refund_payout_configured:false};
+          state.calls.push(structuredClone(m));let result:any;
+          const replyId=m.id;const replyProfile=m.profile;
+          if(m.operation==='public-ticket-earlier-recovery'){
+            if(m.body.parameters!==f.offer.parameters||!/public-ticket-bulk-(status|progress|recover|resume|record-payment)$/.test(m.body.operation))throw Error('Recovery scope changed');
+            m={...m,operation:m.body.operation,body:m.body.body};
+          }
+          if(m.operation==='public-ticket-earlier-status'){
+            result={profile:'nockapp-earlier-ticket-purchases-v1',purchases:earlier?[{parameters:f.offer.parameters,offer:f.offer,purchase:state.bulk}]:[]};
+            queueMicrotask(()=>listeners.forEach(fn=>fn({profile:replyProfile,id:replyId,status:'ok',result:structuredClone(result),laboratory:true,verified:false})));return;
+          }
+          const capabilities={configured:true,protocol:5,scope:f.scope,verifier_release:mode==='older-single'?10:12,publication_mode:'tickets',anonymous_ticket_packs:true,follower_proof_configured:true,source_enrollment_configured:true,historical_issuer_views:true,refund_payout_configured:false};if(earlier)Object.assign(capabilities,{ticket_page_snapshot:true});
+          const inventory=()=>({profile:'nockapp-protected-ticket-wallet-v1',available:state.available,reserved:6,purchase_pending:(mode==='legacy-blocked'||earlier)||!!state.single.purchase||!!state.bulk&&state.bulk.phase!=='complete',initialized:mode!=='invalid-migrated-status',
+            can_purchase:mode!=='legacy-blocked'&&!earlier,can_redeem:true,pack_size:2,pack_price_wei:f.offer.manifest.terms.pack_price_wei,purchase_before:f.offer.manifest.terms.purchase_before,redeem_before:f.offer.manifest.terms.redeem_before,refund_policy:f.offer.manifest.terms.refund_policy,prepaid_custody:true});
+          const earlierPurchases=()=>({profile:'nockapp-earlier-ticket-purchases-v1',purchases:earlier&&state.bulk?.phase!=='complete'?[{parameters:f.offer.parameters,offer:f.offer,purchase:state.bulk}]:[]});
+          if(m.operation==='public-ticket-page'){
+            result={profile:'nockapp-ticket-page-v1',capabilities,offer:f.offer,bulk:{profile:base.profile,phase:'none'},pending:state.single,refund:null,inventory:inventory(),earlier:earlierPurchases()};
+            queueMicrotask(()=>listeners.forEach(fn=>fn({profile:replyProfile,id:replyId,status:'ok',result:structuredClone(result),laboratory:true,verified:false})));return;
+          }
+          if(m.operation==='public-capabilities')result=capabilities;
           else if(m.operation==='public-ticket-offer')result=f.offer;
           else if(m.operation==='public-ticket-pending')result=state.single;
-          else if(m.operation==='public-ticket-status')result={profile:'nockapp-protected-ticket-wallet-v1',available:state.available,reserved:6,purchase_pending:mode==='legacy-blocked'||!!state.single.purchase||!!state.bulk&&state.bulk.phase!=='complete',initialized:mode!=='invalid-migrated-status',
-            can_purchase:mode!=='legacy-blocked',can_redeem:true,pack_size:2,pack_price_wei:f.offer.manifest.terms.pack_price_wei,purchase_before:f.offer.manifest.terms.purchase_before,redeem_before:f.offer.manifest.terms.redeem_before,refund_policy:f.offer.manifest.terms.refund_policy,prepaid_custody:true};
-          else if(m.operation==='public-ticket-bulk-status')result=state.bulk??{profile:base.profile,phase:'none'};
+          else if(m.operation==='public-ticket-status')result=inventory();
+          else if(m.operation==='public-ticket-bulk-status')result=(earlier&&!state.calls.at(-1)?.body?.parameters?undefined:state.bulk)??{profile:base.profile,phase:'none'};
           else if(m.operation==='public-ticket-bulk-prepare'){state.bulk??=structuredClone(base);result=state.bulk;}
           else if(m.operation==='public-ticket-bulk-arm'){state.single=structuredClone(f.empty);if(state.bulk.phase!=='prepared')throw Error('Duplicate dispatch');state.bulk={...state.bulk,phase:'armed',payer:m.body.payer};result={...state.bulk,dispatch_authorized:true};}
-          else if(m.operation==='public-ticket-bulk-progress')result={profile:'nockapp-ticket-payment-progress-v1',batch_id:base.batch_id,pack_hash:'0x'+(mode.startsWith('one-call-')?base.calls[0].data.slice(10,74):base.calls[0].data.slice(-64)),state:['not-seen','wallet-pending','wallet-rejected','wallet-status-unavailable','lost-wallet-pending'].includes(mode)?'not-seen':state.finalized?'finalized':'confirming',latest_block:120,finalized_block:state.finalized?115:state.finalBlock,payment_block:mode==='not-seen'||state.finalized?null:110};
+          else if(m.operation==='public-ticket-bulk-progress')result={profile:'nockapp-ticket-payment-progress-v1',batch_id:base.batch_id,pack_hash:'0x'+(mode.startsWith('one-call-')?base.calls[0].data.slice(10,74):base.calls[0].data.slice(-64)),state:['earlier-unpaid','earlier-hash','earlier-wrong-hash','not-seen','wallet-pending','wallet-rejected','wallet-status-unavailable','lost-wallet-pending'].includes(mode)?'not-seen':state.finalized?'finalized':'confirming',latest_block:120,finalized_block:state.finalized?115:state.finalBlock,payment_block:mode==='not-seen'||mode.startsWith('earlier-')||state.finalized?null:110};
+          else if(m.operation==='public-ticket-bulk-record-payment'){
+            if(mode==='earlier-wrong-hash'){queueMicrotask(()=>listeners.forEach(fn=>fn({profile:replyProfile,id:replyId,status:'rejected',code:'native-operation-unavailable',recoverable:true,laboratory:true,verified:false})));return;}
+            if(m.body.transaction_hash!==f.paid.payment_tx||!m.body.approve_recovery)throw Error('Wrong payment');
+            state.bulk={...state.bulk,phase:'importing',transaction_hash:f.paid.payment_tx};result=state.bulk;
+          }
           else if(m.operation==='public-ticket-bulk-recover'){
             state.single=structuredClone(f.empty);state.bulk={...state.bulk,phase:state.bulk.imported_tickets>=48?'complete':'importing',imported_tickets:state.bulk.imported_tickets+2,settled_tickets:state.bulk.settled_tickets+2,transaction_hash:f.paid.payment_tx};state.available=state.bulk.imported_tickets;result=state.bulk;
             if(['lost-import','one-call-lost-import'].includes(mode)&&!state.lost){state.lost=true;queueMicrotask(()=>listeners.forEach(fn=>fn({profile:m.profile,id:m.id,status:'rejected',code:'native-operation-unavailable',recoverable:true,laboratory:true,verified:false})));return;}
@@ -66,15 +87,40 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
       }) as any;
     },{f,mode});
     const page=await context.newPage();await page.goto(`chrome-extension://${new URL(worker.url()).host}/public-tickets.html`);
+    if(mode.startsWith('earlier-')){
+      if(mode!=='earlier-paid'){
+        await expect(page.getByRole('heading',{name:'Payment not found',exact:true})).toBeVisible();
+        await expect(page.getByRole('status')).toContainText('Check MetaMask');
+        await expect(page.getByText('Purchase steps: 25% complete.')).toHaveCount(0);
+        await expect(page.getByText('Payment needs investigation.',{exact:false})).toHaveCount(0);
+        expect(await page.locator('body').innerText()).not.toContain('Latest block');
+        if(mode==='earlier-unpaid')await page.screenshot({path:testInfo.outputPath('simple-recovery.png'),fullPage:true});
+        if(mode==='earlier-hash'||mode==='earlier-wrong-hash'){
+          await page.getByLabel('If it says Confirmed, paste its transaction hash').fill(f.paid.payment_tx);
+          await page.getByRole('button',{name:'Verify payment',exact:true}).click();
+          if(mode==='earlier-wrong-hash'){
+            await expect(page.getByRole('alert')).toContainText('could not be verified for this purchase');
+            await expect(page.getByText('0 available · 6 assigned to posts')).toBeVisible();
+          }
+        }
+      }
+      if(mode==='earlier-paid'||mode==='earlier-hash')await expect(page.getByText('50 available · 6 assigned to posts')).toBeVisible({timeout:20000});
+      await expect(page.getByRole('button',{name:/Review.*tickets|Pay for/})).toHaveCount(0);
+      expect(await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).toEqual([]);
+      const requests=await worker.evaluate(()=>(globalThis as any).bulkTest.calls);
+      expect(requests.some((r:any)=>/prepare|arm/.test(r.operation))).toBe(false);
+      expect(requests.some((r:any)=>['public-ticket-offer','public-ticket-pending','public-ticket-status','public-ticket-earlier-status'].includes(r.operation))).toBe(false);
+      expect(requests.filter((r:any)=>r.operation==='public-ticket-earlier-recovery').every((r:any)=>r.body.parameters===f.offer.parameters)).toBe(true);
+      return;
+    }
     if(mode==='legacy-blocked'){
-      await expect(page.getByRole('status')).toContainText('An earlier purchase is unresolved.');
-      await expect(page.getByText('50 tickets · 0.0025 test ETH',{exact:true})).toBeVisible();
+      await expect(page.getByRole('status')).toContainText('No unfinished 50-ticket checkout was found.');
       await expect(page.getByText('0 available · 6 assigned to posts')).toBeVisible();
       await expect(page.getByRole('button',{name:/Review.*tickets|Pay for/})).toHaveCount(0);
       expect(await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).toEqual([]);
       expect((await worker.evaluate(()=>(globalThis as any).bulkTest.calls)).some((r:any)=>/prepare|arm|recover/.test(r.operation))).toBe(false);
       await worker.evaluate(()=>{(globalThis as any).bulkTest.available=2;});await page.reload();
-      await expect(page.getByRole('status')).toContainText('An earlier purchase is unresolved.');
+      await expect(page.getByRole('status')).toContainText('No unfinished 50-ticket checkout was found.');
       await expect(page.getByText('2 available · 6 assigned to posts')).toBeVisible();
       await expect(page.getByText('Buy another pack',{exact:true})).toHaveCount(0);
       return;
@@ -96,14 +142,14 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
         await page.getByText('Payment details',{exact:true}).click();
         await page.getByRole('button',{name:'Check saved payment',exact:true}).click();
       }
-      await expect(page.getByRole('status')).toContainText('Purchase complete. 50 tickets imported.');
+      await expect(page.getByRole('status')).toContainText('50 tickets ready to use.');
       const wallet=await page.evaluate(()=>(globalThis as any).bulkWalletCalls);
       const sends=wallet.filter((r:any)=>r.method==='wallet_sendCalls');expect(sends).toHaveLength(1);
       expect(sends[0].params[0].calls).toEqual(calls);expect(sends[0].params[0].atomicRequired).toBe(false);
       expect(wallet.some((r:any)=>['wallet_getCapabilities','wallet_upgradeAccount','eth_sendTransaction'].includes(r.method))).toBe(false);
       const native=await worker.evaluate(()=>(globalThis as any).bulkTest.calls);
       expect(native.filter((r:any)=>r.operation==='public-ticket-bulk-arm')).toHaveLength(1);
-      await page.reload();await expect(page.getByRole('status')).toContainText('50 tickets imported');
+      await page.reload();await expect(page.getByRole('status')).toContainText('50 tickets ready to use.');
       expect((await page.evaluate(()=>(globalThis as any).bulkWalletCalls)).filter((r:any)=>r.method==='wallet_sendCalls')).toHaveLength(0);
       return;
     }
@@ -154,8 +200,8 @@ for(const mode of ['purchase','lost-wallet','lost-import','saved-armed','unsuppo
     }else if(mode==='lost-import'){
       await expect(page.getByRole('alert')).toBeVisible();await checkSaved();
     }
-    await expect(page.getByRole('status')).toContainText('Purchase complete. 50 tickets imported.');
-    await expect(page.getByRole('progressbar',{name:'50-ticket purchase completion'})).toHaveAttribute('value','4');
+    await expect(page.getByRole('status')).toContainText('50 tickets ready to use.');
+    await expect(page.getByRole('progressbar',{name:'Ticket purchase completion',exact:true})).toHaveAttribute('value','4');
     const wallet=await page.evaluate(()=>(globalThis as any).bulkWalletCalls);expect(wallet.filter((r:any)=>r.method==='wallet_sendCalls')).toHaveLength(0);
     expect(wallet.some((r:any)=>r.method==='eth_sendTransaction')).toBe(false);
     const native=await worker.evaluate(()=>(globalThis as any).bulkTest.calls);expect(native.filter((r:any)=>r.operation==='public-ticket-bulk-arm')).toHaveLength(0);

@@ -89,3 +89,5 @@ Payment compatibility correction: the existing50-ticket request contains25calls;
 Index-first delivery and explicit one-call checkout source are in review/index-first-one-call. See evidence/index-first-one-call-v1.json for exact tested versions and remaining deployment/acceptance limits.
 
 A source-only, unactivated two-offer service candidate is in review/two-offer-v5 and components/two-offer-services-v5. See evidence/two-offer-services-v5.json for checks and remaining review/acceptance gates.
+
+Same-purchase completion and truthful wallet submission/error handling are described in review/same-purchase-recovery; source-bound evidence is in evidence/same-purchase-wallet-v1.json. No actual owner50payment or complete beta acceptance is claimed.

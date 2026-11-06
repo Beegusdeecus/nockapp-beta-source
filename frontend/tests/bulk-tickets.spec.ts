@@ -77,3 +77,41 @@ test('failed durable storage stops before any payment request reaches the wallet
  const {offer,raw}=await sample(600);const admitted=await validateBulkPurchase(raw,offer);const p=provider(f.rpc.payer);storage.set=async()=>{throw Error('synthetic-disk-full');};
  await expect(sendBulkPurchase(admitted!,p)).rejects.toThrow('No wallet payment was requested');expect(p.calls.some(c=>c.method==='wallet_sendCalls')).toBe(false);
 });
+
+test('earlier checkout recovery never admits preparation, rearming or a replacement batch',async()=>{
+  const {offer,raw}=await sample(700);delete raw.dispatch_authorized;
+  const body={parameters:offer.parameters,operation:'public-ticket-bulk-recover',body:{batch_id:raw.batch_id,approve_import:true}};
+  expect(validPublicBody('public-ticket-earlier-recovery',body)).toBe(true);
+  expect(publicProjection('public-ticket-earlier-recovery',raw,body)).toBe(true);
+  expect(publicProjection('public-ticket-earlier-recovery',{...raw,batch_id:'ab'.repeat(32)},body)).toBe(false);
+  for(const operation of ['public-ticket-bulk-arm','public-ticket-bulk-prepare','public-ticket-payment','public-ticket-earlier-recovery']){
+    expect(validPublicBody('public-ticket-earlier-recovery',{...body,operation})).toBe(false);
+  }
+  const snapshot={profile:'nockapp-earlier-ticket-purchases-v1',purchases:[{parameters:offer.parameters,offer,purchase:raw}]};
+  expect(publicProjection('public-ticket-earlier-status',snapshot)).toBe(true);
+  expect(publicProjection('public-ticket-earlier-status',{...snapshot,purchases:[...snapshot.purchases,...snapshot.purchases]})).toBe(false);
+  expect(publicProjection('public-ticket-earlier-status',{...snapshot,purchases:[{...snapshot.purchases[0],parameters:'ab'.repeat(32)}]})).toBe(false);
+  expect(publicProjection('public-ticket-earlier-status',{...snapshot,purchases:[{...snapshot.purchases[0],purchase:{...raw,dispatch_authorized:true}}]})).toBe(false);
+});
+
+test('ticket page snapshot keeps strict admission and exact payment-hash binding',async()=>{
+  const {offer,raw}=await sample(900);delete raw.dispatch_authorized;
+  const capabilities={configured:true,protocol:5,scope:f.scope,verifier_release:12,publication_mode:'tickets',anonymous_ticket_packs:true,follower_proof_configured:true,source_enrollment_configured:true,historical_issuer_views:true,refund_payout_configured:false,ticket_page_snapshot:true};
+  const t=offer.manifest.terms;
+  const inventory={profile:'nockapp-protected-ticket-wallet-v1',initialized:true,available:0,reserved:6,purchase_pending:true,can_purchase:false,can_redeem:true,pack_size:2,pack_price_wei:t.pack_price_wei,purchase_before:t.purchase_before,redeem_before:t.redeem_before,refund_policy:t.refund_policy,prepaid_custody:true};
+  const snapshot={profile:'nockapp-ticket-page-v1',capabilities,offer,bulk:{profile:raw.profile,phase:'none'},pending:f.empty,refund:null,inventory,earlier:{profile:'nockapp-earlier-ticket-purchases-v1',purchases:[{parameters:offer.parameters,offer,purchase:raw}]}};
+  expect(publicProjection('public-ticket-page',snapshot)).toBe(true);
+  expect(publicProjection('public-ticket-page',{...snapshot,inventory:{...inventory,initialized:false}})).toBe(false);
+  expect(publicProjection('public-ticket-page',{...snapshot,capabilities:{...capabilities,ticket_page_snapshot:false}})).toBe(false);
+  const body={batch_id:raw.batch_id,transaction_hash:f.paid.payment_tx,approve_recovery:true};
+  expect(validPublicBody('public-ticket-bulk-record-payment',body)).toBe(true);
+  expect(validPublicBody('public-ticket-bulk-record-payment',{...body,approve_recovery:false})).toBe(false);
+  expect(publicProjection('public-ticket-bulk-record-payment',{...raw,phase:'importing',transaction_hash:f.paid.payment_tx},body)).toBe(true);
+  expect(publicProjection('public-ticket-bulk-record-payment',{...raw,transaction_hash:'0x'+'ab'.repeat(32)},body)).toBe(false);
+  if(process.env.NOCKAPP_FROZEN_TICKET_PAGE){
+    const actual=JSON.parse(readFileSync(process.env.NOCKAPP_FROZEN_TICKET_PAGE,'utf8'));
+    expect(actual.empty_private_mounts&&actual.keyring_disabled&&!actual.owner_helper_invoked).toBe(true);
+    expect(publicProjection('public-capabilities',actual.capabilities)).toBe(true);
+    expect(publicProjection('public-ticket-page',actual.snapshot)).toBe(true);
+  }
+});
